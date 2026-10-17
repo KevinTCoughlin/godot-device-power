@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 Kevin Coughlin
+
+SPDX-License-Identifier: MIT
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Godot's v2 plugin registration: the singleton name, then the class. -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.DevicePowerAndroid"
+            android:value="com.kevintcoughlin.devicepower.DevicePowerPlugin" />
+    </application>
+
+</manifest>
