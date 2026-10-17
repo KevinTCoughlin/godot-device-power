@@ -1,0 +1,47 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
+this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Before 1.0 the public API may change in a minor release.
+
+## [Unreleased]
+
+## 0.1.0 (unreleased)
+
+First version as a standalone project. The addon was written for, and first
+shipped in, the author's game Salt Line; this release extracts it and adds the
+Android plugin and thermal back-off.
+
+### Added
+
+- `DevicePower` autoload, installed by the **Device Power** editor plugin:
+  power source, battery saver, Android Game Mode and refresh rates, and
+  `recommended_fps_cap()` built on the pure, static `fps_cap()` and
+  `paced_cap()` policy (from Salt Line).
+- **Frame rate vote**: `Surface.setFrameRate()` on Godot's render surface,
+  seamless-only, following `Engine.max_fps` (from Salt Line).
+- **Thermal status and back-off.** `get_thermal_status()` (the
+  `ThermalStatus` enum, in `PowerManager`'s numbering) and
+  `get_thermal_back_off()`. `fps_cap()` takes a `thermal_status`: from
+  Moderate the cap is at most `battery_fps`, from Severe at most
+  `battery_mode_fps`, and heat wins over Performance game mode. The facade
+  backs off at once and recovers after `thermal_cooldown` seconds (default 30)
+  below the current level. The thresholds are a starting point to calibrate.
+- **`DevicePowerAndroid` Kotlin plugin** (Godot Android plugin v2, AAR), bundled
+  into Gradle exports by an `EditorExportPlugin`: a broadcast receiver for
+  `ACTION_BATTERY_CHANGED` and `ACTION_POWER_SAVE_MODE_CHANGED`, a thermal
+  status listener (API 29+), the game mode re-read on resume (API 31+), refresh
+  rates at the current resolution including alternative rates (API 31+), and the
+  frame rate vote, kept and re-applied when the render surface is recreated.
+  Changes arrive as signals; nothing is polled but an optional 30 s safety
+  read (`safety_poll_interval`).
+- `DevicePowerAndroidPluginBackend`, which type-checks and range-checks every
+  value from the plugin. The `JavaClassWrapper` backend remains as the fallback
+  when the plugin is not in the export, and now reads the thermal status too.
+- `DevicePower.select_backend()`, a testable backend choice.
+- Headless GDScript suite that fails any test during which a script or engine
+  error is logged; JVM unit tests for the plugin's logic; an editor-load smoke
+  test; demo project; CI and a draft-release workflow that attaches the addon
+  with built AARs.
