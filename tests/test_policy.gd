@@ -159,6 +159,42 @@ func test_paced_cap_leaves_what_it_cannot_judge() -> void:
 	assert_eq(Facade.paced_cap(60, PackedFloat32Array([NAN, -1.0])), 60, "garbage rates")
 
 
+func test_paced_cap_down_rounds_down_to_an_even_rate() -> void:
+	var pixel := PackedFloat32Array([60.000004, 120.00001])
+	var tablet := PackedFloat32Array([90.0])
+	assert_eq(Facade.paced_cap_down(60, tablet), 45, "60 on a fixed 90 Hz panel rounds down to 45")
+	assert_eq(Facade.paced_cap_down(30, tablet), 30, "30 on 90 Hz")
+	assert_eq(Facade.paced_cap_down(60, pixel), 60, "60 on 60/120 Hz")
+	assert_eq(Facade.paced_cap_down(30, pixel), 30, "30 on 60/120 Hz")
+	assert_eq(Facade.paced_cap_down(60, PackedFloat32Array([144.0])), 48, "60 on 144 Hz: 48")
+	assert_eq(Facade.paced_cap_down(30, PackedFloat32Array([144.0])), 29, "30 on 144 Hz: 144 / 5")
+	assert_eq(Facade.paced_cap_down(60, PackedFloat32Array([59.94])), 60, "59.94 Hz paces 60")
+	assert_eq(Facade.paced_cap_down(100, tablet), 90, "a cap above every rate gets the peak")
+	assert_eq(Facade.paced_cap_down(0, tablet), 0, "no cap stays no cap")
+	assert_eq(Facade.paced_cap_down(60, PackedFloat32Array()), 60, "unknown rates")
+	assert_eq(Facade.paced_cap_down(60, PackedFloat32Array([NAN, -1.0])), 60, "garbage rates")
+
+
+func test_paced_fps_cap_rounds_power_up_and_heat_down() -> void:
+	var tablet := PackedFloat32Array([90.0])
+	assert_eq(Facade.paced_fps_cap(60, 0, tablet), 90, "battery only: up")
+	assert_eq(Facade.paced_fps_cap(0, 60, tablet), 45, "moderate only: down")
+	assert_eq(Facade.paced_fps_cap(60, 60, tablet), 45, "battery and moderate: heat wins")
+	assert_eq(Facade.paced_fps_cap(90, 60, tablet), 45, "performance and moderate")
+	assert_eq(Facade.paced_fps_cap(30, 60, tablet), 30, "a lower power cap still binds")
+	assert_eq(Facade.paced_fps_cap(0, 30, tablet), 30, "severe")
+	assert_eq(Facade.paced_fps_cap(0, 0, tablet), 0, "nothing")
+
+
+func test_thermal_limit() -> void:
+	assert_eq(Facade.thermal_limit(T.UNKNOWN), 0, "unknown")
+	assert_eq(Facade.thermal_limit(T.LIGHT), 0, "light")
+	assert_eq(Facade.thermal_limit(T.MODERATE), 60, "moderate")
+	assert_eq(Facade.thermal_limit(T.SEVERE), 30, "severe")
+	assert_eq(Facade.thermal_limit(T.MODERATE, 45, 20), 45, "the game's numbers")
+	assert_eq(Facade.thermal_limit(T.MODERATE, 0, 30), 0, "a zero limit is none")
+
+
 func test_frame_rate_vote() -> void:
 	assert_eq(Facade.frame_rate_vote(0, 120.0), 120.0, "uncapped votes the peak")
 	assert_eq(Facade.frame_rate_vote(60, 120.0), 60.0, "a cap votes the cap")

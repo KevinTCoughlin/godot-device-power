@@ -107,7 +107,7 @@ on top (the tighter of the two wins). The display vote follows whatever
 | `refresh()` | Read the backend now. |
 | `get_backend_name()` | `android_plugin`, `android`, `null` or `mock`. |
 | `set_backend(backend)` | Inject a backend (tests use `DevicePowerMockBackend`). |
-| `fps_cap()`, `paced_cap()`, `thermal_back_off()`, `frame_rate_vote()`, `select_backend()` | The pure, static policy, usable with your own state. |
+| `fps_cap()`, `thermal_limit()`, `paced_cap()`, `paced_cap_down()`, `paced_fps_cap()`, `thermal_back_off()`, `frame_rate_vote()`, `select_backend()` | The pure, static policy, usable with your own state. |
 
 | Export | Default | Meaning |
 | --- | --- | --- |
@@ -132,8 +132,8 @@ ever lowers the cap.
 | On battery | `battery_fps` (60) |
 | On external power | 0 (no cap: V-Sync and the display decide) |
 | Unknown (no bridge) | 0 |
-| **then** thermal status Moderate | at most `battery_fps` (60); an uncapped game gets 60 |
-| **then** thermal status Severe or worse | at most `battery_mode_fps` (30) |
+| **then** thermal status Moderate | at most `battery_fps` (60), paced *down*; an uncapped game gets it |
+| **then** thermal status Severe or worse | at most `battery_mode_fps` (30), paced *down* |
 
 Heat wins over Performance mode: a player's request for smoothness does not
 outrank a device that is throttling. Light throttling is left to the platform.
@@ -142,14 +142,27 @@ outrank a device that is throttling. Light throttling is left to the platform.
 non-zero), not that the battery is gaining charge: a weak port or a charge
 limit still counts.
 
-**Pacing.** Every cap is then paced to the panel (`paced_cap()`): rounded *up*
-to the nearest rate the display can show evenly, either a rate it can switch
-to or one divided by a whole number. On a 60/120 Hz phone the battery cap
-stays 60; on a panel fixed at 90 Hz it becomes 90 (no saving, rather than an
-uneven 60 or a halved 45); 72 on 144 Hz; Battery game mode's 30 stays 30 on
-90 Hz. Rounding up is a deliberate choice: a cap should never cost more
-smoothness than it asked for. One consequence: on a fixed 90 Hz panel,
-Moderate heat (60) saves nothing, and only Severe (30) lowers the rate.
+**Pacing.** Every cap is then paced to the panel, to a rate the display can
+show evenly: one it can switch to, or one divided by a whole number. Which way
+it rounds depends on where the cap comes from (`paced_fps_cap()`):
+
+- A **power or game-mode cap rounds up** (`paced_cap()`), so it never costs
+  more smoothness than it asked for. On a 60/120 Hz phone the battery cap
+  stays 60; on a panel fixed at 90 Hz it becomes 90 (no saving, rather than
+  an uneven 60 or a halved 45); 72 on 144 Hz; Battery game mode's 30 stays
+  30 on 90 Hz.
+- A **thermal cap rounds down** (`paced_cap_down()`), because its point is to
+  shed heat: Moderate's 60 becomes 45 on a fixed 90 Hz panel, stays 60 on
+  60/120 Hz, and becomes 48 on 144 Hz; Severe's 30 stays 30 on 90 Hz.
+- **Heat wins.** When both apply, the result never exceeds the paced-down
+  thermal cap: on battery with Moderate heat a fixed 90 Hz panel gets 45, not
+  90, and so does Performance mode.
+
+| Panel | Battery only | Moderate heat | Severe heat |
+| --- | --- | --- | --- |
+| 60 / 120 Hz | 60 | 60 | 30 |
+| fixed 90 Hz | 90 | 45 | 30 |
+| 144 Hz | 72 | 48 | 29 (144 / 5) |
 
 **Hysteresis.** The facade backs off as soon as the status rises, and recovers
 only after the status has stayed below the current level for

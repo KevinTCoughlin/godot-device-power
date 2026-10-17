@@ -243,21 +243,18 @@ func get_refresh_rates() -> PackedFloat32Array:
 
 
 ## [method fps_cap] for the current state, with [member battery_fps],
-## [member battery_mode_fps] and the thermal back-off in force, then
-## [method paced_cap] for this display. [param refresh_rate] stands in for
-## the peak refresh rate in Performance mode when the peak is unknown.
+## [member battery_mode_fps] and the thermal back-off in force, paced to this
+## display by [method paced_fps_cap]: a power or game-mode cap rounds up to
+## an even rate, a thermal cap rounds down, and heat wins.
+## [param refresh_rate] stands in for the peak refresh rate in Performance
+## mode when the peak is unknown.
 func recommended_fps_cap(refresh_rate: float) -> int:
 	var peak := _peak_refresh_rate if _peak_refresh_rate > 0.0 else refresh_rate
-	var cap := fps_cap(
-		_power_source,
-		_power_saver,
-		_game_mode,
-		peak,
-		battery_fps,
-		battery_mode_fps,
-		_BACK_OFF_STATUS[_back_off],
+	var cap := _power_cap(
+		_power_source, _power_saver, _game_mode, peak, battery_fps, battery_mode_fps
 	)
-	return paced_cap(cap, _refresh_rates)
+	var limit := thermal_limit(_BACK_OFF_STATUS[_back_off], battery_fps, battery_mode_fps)
+	return paced_fps_cap(cap, limit, _refresh_rates)
 
 
 ## The backend for a platform: [param os_name] as [method OS.get_name]
@@ -285,11 +282,12 @@ static func select_backend(os_name: String, get_singleton: Callable) -> DevicePo
 
 ## The lowest frame rate at or above [param cap] that the display can show
 ## evenly: a rate it can switch to, or one divided by a whole number. A cap
-## the panel cannot pace is rounded up, never down, so a cap never costs
-## more smoothness than it asked for: 60 stays 60 on a 60/120 Hz panel,
-## becomes 90 (no saving) on a panel fixed at 90 Hz, and 72 on 144 Hz; 30
-## on 90 Hz stays 30. [code]0[/code] (no cap), no known rates, or a cap
-## above every rate is returned as is.
+## the panel cannot pace is rounded up, never down, so a power or game-mode
+## cap never costs more smoothness than it asked for: 60 stays 60 on a
+## 60/120 Hz panel, becomes 90 (no saving) on a panel fixed at 90 Hz, and 72
+## on 144 Hz; 30 on 90 Hz stays 30. [code]0[/code] (no cap), no known rates,
+## or a cap above every rate is returned as is. Thermal caps use
+## [method paced_cap_down] instead.
 static func paced_cap(cap: int, refresh_rates: PackedFloat32Array) -> int:
 	if cap <= 0 or refresh_rates.is_empty():
 		return cap
@@ -303,6 +301,54 @@ static func paced_cap(cap: int, refresh_rates: PackedFloat32Array) -> int:
 		if paced >= cap - 0.5 and (best == 0 or roundi(paced) < best):
 			best = roundi(paced)
 	return best if best > 0 else cap
+
+
+## The highest frame rate at or below [param cap] that the display can show
+## evenly: a rate it can switch to, or one divided by a whole number. Used
+## for thermal caps, where the point is to shed heat, so the cap is never
+## exceeded: 60 becomes 45 on a panel fixed at 90 Hz, stays 60 on 60/120 Hz,
+## and becomes 48 on 144 Hz; 30 on 90 Hz stays 30. [code]0[/code] (no cap)
+## or no known rates is returned as is.
+static func paced_cap_down(cap: int, refresh_rates: PackedFloat32Array) -> int:
+	if cap <= 0 or refresh_rates.is_empty():
+		return cap
+	var best := 0
+	for rate in refresh_rates:
+		if not is_finite(rate) or rate <= 0.0:
+			continue
+		# Half a frame of slack, as in paced_cap(): 59.94 Hz paces a 60 cap.
+		var divisor := maxi(1, ceili((rate - 0.5) / cap))
+		var paced := roundi(rate / divisor)
+		if paced >= 1 and paced <= cap and paced > best:
+			best = paced
+	return best if best > 0 else cap
+
+
+## The cap to apply for a power cap [param cap] (from [method fps_cap]
+## without heat; [code]0[/code] is none) and a thermal limit [param limit]
+## (from [method thermal_limit]; [code]0[/code] is none), paced to
+## [param refresh_rates]. The power cap rounds up ([method paced_cap]), the
+## thermal limit rounds down ([method paced_cap_down]), and the result never
+## exceeds the paced thermal limit: heat wins.
+static func paced_fps_cap(cap: int, limit: int, refresh_rates: PackedFloat32Array) -> int:
+	var paced := paced_cap(cap, refresh_rates)
+	if limit <= 0:
+		return paced
+	return _tighter(paced, paced_cap_down(limit, refresh_rates))
+
+
+## The most a [enum ThermalStatus] allows: [param battery_fps] from
+## Moderate, [param battery_mode_fps] from Severe, [code]0[/code] (no
+## limit) below Moderate or when unknown.
+static func thermal_limit(
+	thermal_status: int, battery_fps: int = 60, battery_mode_fps: int = 30
+) -> int:
+	match thermal_back_off(thermal_status):
+		ThermalBackOff.SEVERE:
+			return maxi(battery_mode_fps, 0)
+		ThermalBackOff.MODERATE:
+			return maxi(battery_fps, 0)
+	return 0
 
 
 ## The rate to ask the display for under a frame cap: the cap, or the peak
@@ -341,6 +387,9 @@ static func thermal_back_off(thermal_status: int) -> int:
 ##   from Severe at most [param battery_mode_fps]. An uncapped game gets that
 ##   cap. These thresholds are a starting point: calibrate them on your
 ##   game's hottest scene and target devices.
+##
+## This is the cap before pacing; [method paced_fps_cap] paces it to a
+## display, rounding a thermal limit down and any other cap up.
 static func fps_cap(
 	power_source: int,
 	power_saver: Variant,
@@ -353,12 +402,7 @@ static func fps_cap(
 	var cap := _power_cap(
 		power_source, power_saver, game_mode, refresh_rate, battery_fps, battery_mode_fps
 	)
-	match thermal_back_off(thermal_status):
-		ThermalBackOff.SEVERE:
-			return _tighter(cap, battery_mode_fps)
-		ThermalBackOff.MODERATE:
-			return _tighter(cap, battery_fps)
-	return cap
+	return _tighter(cap, thermal_limit(thermal_status, battery_fps, battery_mode_fps))
 
 
 static func _power_cap(

@@ -29,6 +29,12 @@ Android plugin and thermal back-off.
   `battery_mode_fps`, and heat wins over Performance game mode. The facade
   backs off at once and recovers after `thermal_cooldown` seconds (default 30)
   below the current level. The thresholds are a starting point to calibrate.
+- **Thermal caps are paced down, other caps up.** `paced_cap_down()` paces a
+  cap to the highest evenly shown rate at or below it; `paced_fps_cap()` rounds
+  a power or game-mode cap up (`paced_cap()`, as before) and the thermal limit
+  (`thermal_limit()`) down, and never exceeds the latter. On a fixed 90 Hz
+  panel Moderate heat now gives 45 (Severe 30), while battery alone still
+  gives 90; on 144 Hz Moderate gives 48. `recommended_fps_cap()` uses it.
 - **`DevicePowerAndroid` Kotlin plugin** (Godot Android plugin v2, AAR), bundled
   into Gradle exports by an `EditorExportPlugin`: a broadcast receiver for
   `ACTION_BATTERY_CHANGED` and `ACTION_POWER_SAVE_MODE_CHANGED`, a thermal

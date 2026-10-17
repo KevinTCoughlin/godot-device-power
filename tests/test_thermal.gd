@@ -104,15 +104,57 @@ func test_heat_wins_over_performance_mode_in_the_facade() -> void:
 	assert_eq(power.recommended_fps_cap(120.0), 60, "heat wins")
 
 
-func test_moderate_heat_is_paced_like_any_cap() -> void:
-	# The owner's pacing rule rounds up: on a fixed 90 Hz panel moderate heat
-	# (60) gets 90, i.e. no saving; severe heat (30) is paceable and holds.
-	mock.refresh_rates = PackedFloat32Array([90.0])
+func _on_panel(rates: Array, source: int, mode: int) -> void:
+	mock.refresh_rates = PackedFloat32Array(rates)
+	mock.power_source = source
+	mock.game_mode = mode
 	power._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+
+
+func test_thermal_caps_round_down_on_a_fixed_90_hz_panel() -> void:
+	_on_panel([90.0], Facade.PowerSource.EXTERNAL, Facade.GameMode.STANDARD)
 	_heat(T.MODERATE, 0.0)
-	assert_eq(power.recommended_fps_cap(90.0), 90, "moderate on fixed 90 Hz")
+	assert_eq(power.recommended_fps_cap(90.0), 45, "moderate: 60 rounds down to 45")
 	_heat(T.SEVERE, 1.0)
-	assert_eq(power.recommended_fps_cap(90.0), 30, "severe on fixed 90 Hz")
+	assert_eq(power.recommended_fps_cap(90.0), 30, "severe: 30")
+
+
+func test_moderate_heat_on_other_panels() -> void:
+	_on_panel([60.0, 120.0], Facade.PowerSource.EXTERNAL, Facade.GameMode.STANDARD)
+	_heat(T.MODERATE, 0.0)
+	assert_eq(power.recommended_fps_cap(120.0), 60, "60/120 Hz: 60")
+	_on_panel([144.0], Facade.PowerSource.EXTERNAL, Facade.GameMode.STANDARD)
+	assert_eq(power.recommended_fps_cap(144.0), 48, "144 Hz: 60 rounds down to 48")
+
+
+func test_battery_alone_still_rounds_up() -> void:
+	_on_panel([90.0], Facade.PowerSource.BATTERY, Facade.GameMode.STANDARD)
+	assert_eq(power.recommended_fps_cap(90.0), 90, "battery on fixed 90 Hz: 60 rounds up to 90")
+
+
+func test_battery_and_moderate_heat_takes_the_thermal_cap() -> void:
+	_on_panel([90.0], Facade.PowerSource.BATTERY, Facade.GameMode.STANDARD)
+	_heat(T.MODERATE, 0.0)
+	assert_eq(power.recommended_fps_cap(90.0), 45, "heat wins: never above the round-down cap")
+
+
+func test_performance_mode_and_moderate_heat_on_90_hz() -> void:
+	_on_panel([90.0], Facade.PowerSource.EXTERNAL, Facade.GameMode.PERFORMANCE)
+	assert_eq(power.recommended_fps_cap(90.0), 90, "performance")
+	_heat(T.MODERATE, 0.0)
+	assert_eq(power.recommended_fps_cap(90.0), 45, "heat beats Performance")
+
+
+func test_the_round_down_cap_follows_hysteresis() -> void:
+	_on_panel([90.0], Facade.PowerSource.EXTERNAL, Facade.GameMode.STANDARD)
+	_heat(T.MODERATE, 0.0)
+	_heat(T.NONE, 1.0)
+	now = 30.0
+	power._process(0.0)
+	assert_eq(power.recommended_fps_cap(90.0), 45, "held during the cool-down")
+	now = 31.0
+	power._process(0.0)
+	assert_eq(power.recommended_fps_cap(90.0), 0, "released after it")
 
 
 func test_a_new_backend_starts_cool() -> void:
