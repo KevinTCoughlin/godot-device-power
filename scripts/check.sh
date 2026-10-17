@@ -101,10 +101,24 @@ run_tests() {
 # only automatic check that the editor side loads at all.
 run_editor_smoke() {
 	step "editor load smoke test"
-	local godot log
+	local godot log before
 	godot="$(godot_bin)"
 	log="$(mktemp)"
+	before="$(mktemp)"
+	cp "$REPO_ROOT/project.godot" "$before"
 	"$godot" --headless --editor --verbose --path "$REPO_ROOT" --quit-after 120 >"$log" 2>&1 || true
+	# Opening and closing the editor must not touch project.godot. This
+	# catches a rewrite on editor start; the export path (where an autoload
+	# added in _enter_tree and removed in _exit_tree did rewrite a game's
+	# project.godot) needs an export to check, which this smoke test skips.
+	if ! cmp -s "$before" "$REPO_ROOT/project.godot"; then
+		diff -u "$before" "$REPO_ROOT/project.godot" >&2 || true
+		cp "$before" "$REPO_ROOT/project.godot"
+		rm -f "$before"
+		echo "Starting the editor rewrote project.godot (restored)." >&2
+		return 1
+	fi
+	rm -f "$before"
 	if grep -E "^(SCRIPT )?ERROR|Parse Error" "$log"; then
 		echo "The editor logged errors while loading the plugin (log: $log)." >&2
 		return 1

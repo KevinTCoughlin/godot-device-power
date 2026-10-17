@@ -52,9 +52,11 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
     @Volatile
     private var snapshot = PowerSnapshot()
 
-    // Main thread only.
+    // Main thread only, except surfaceHolder, which the GL thread checks.
     private var receiverRegistered = false
     private var thermalListener: Any? = null
+
+    @Volatile
     private var surfaceHolder: SurfaceHolder? = null
 
     private val voteLock = Any()
@@ -65,7 +67,14 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
     /** Battery level/plug changes and battery saver toggles. Main thread. */
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            update(read(stickyBattery = intent.takeIf { it.action == Intent.ACTION_BATTERY_CHANGED }))
+            if (intent.action == Intent.ACTION_BATTERY_CHANGED) {
+                // Fires on every level, voltage and temperature tick: only the
+                // plug state matters here, so skip the full read's binder calls.
+                val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
+                update(snapshot.copy(powerSource = PowerSource.fromPlugged(plugged)))
+            } else {
+                update(read(stickyBattery = null))
+            }
         }
     }
 

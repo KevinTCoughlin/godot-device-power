@@ -2,6 +2,9 @@
 ; SPDX-FileCopyrightText: 2026 Kevin Coughlin
 ; SPDX-License-Identifier: MIT
 
+; Kept by hand. Starting the editor must leave this file untouched, comments
+; included: scripts/check.sh fails if a plugin makes the editor rewrite it.
+
 config_version=5
 
 [application]
