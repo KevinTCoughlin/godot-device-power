@@ -7,10 +7,11 @@ extends Node
 ## because of it.
 ##
 ## Installed as the [code]DevicePower[/code] autoload by the
-## [code]device_power[/code] plugin. It polls a backend chosen at startup
-## ([DevicePowerAndroidBackend] on Android, [DevicePowerNullBackend]
-## elsewhere, or one injected by tests) and emits [signal changed] when
-## anything it reports changes.
+## [code]device_power[/code] plugin. It reads a backend chosen at startup
+## ([DevicePowerAndroidPluginBackend] when the Android plugin is in the
+## export, [DevicePowerAndroidBackend] on Android without it,
+## [DevicePowerNullBackend] elsewhere, or one injected by tests) and emits
+## [signal changed] when anything it reports changes.
 ##
 ## [codeblock]
 ## func _ready() -> void:
@@ -29,16 +30,23 @@ extends Node
 ## a Pixel 10 with Android 16 it lifted Android's game default frame rate
 ## (60) for an app that stays a game, and let the panel drop to 60 Hz on
 ## battery. The user's peak refresh rate setting still caps it.
+##
+## [b]Heat.[/b] When the device reports thermal pressure the cap backs off
+## (see [method fps_cap]). It backs off at once and recovers only after the
+## status has stayed lower for [member thermal_cooldown] seconds, so a status
+## that flickers at a boundary does not make the frame rate flicker too.
 
-## Emitted after a poll finds a different power source, battery saver state
-## or game mode, and once after a backend is set.
+## Emitted when the power source, battery saver, game mode, thermal status,
+## thermal back-off or refresh rates change, and once after a backend is set.
 signal changed
 
 ## Where the power comes from.
 enum PowerSource {
 	UNKNOWN = -1,  ## No answer: no bridge on this platform, or the read failed.
 	BATTERY = 0,  ## Running on the battery.
-	EXTERNAL = 1,  ## On a charger, USB, a dock or wireless charging, whether or not it is charging right now.
+	## On a charger, USB, a dock or wireless charging, whether or not it is
+	## charging right now.
+	EXTERNAL = 1,
 }
 
 ## Android [code]GameManager[/code] modes, in Android's numbering.
@@ -50,27 +58,75 @@ enum GameMode {
 	CUSTOM = 4,  ## OEM or adb intervention settings; treated like Standard.
 }
 
-## Seconds between polls of the power source and battery saver while the
-## app is in the foreground. A charger plugged in mid-game is picked up
-## within this long. The game mode is read at start and when the app
-## resumes or regains focus (the Game Dashboard takes focus to change it).
+## Android [code]PowerManager.THERMAL_STATUS_*[/code], in Android's numbering.
+enum ThermalStatus {
+	UNKNOWN = -1,  ## No answer: before Android 10, not Android, or the read failed.
+	NONE = 0,  ## Not under thermal pressure.
+	LIGHT = 1,  ## Light throttling, without noticeable impact on the experience.
+	MODERATE = 2,  ## Moderate throttling, with some impact.
+	SEVERE = 3,  ## Severe throttling; the experience is largely affected.
+	CRITICAL = 4,  ## The platform has done everything it can to reduce power.
+	EMERGENCY = 5,  ## Key components are shutting down.
+	SHUTDOWN = 6,  ## The device is about to shut down.
+}
+
+## How far heat holds the cap down; see [method thermal_back_off].
+enum ThermalBackOff {
+	NONE = 0,  ## No thermal limit.
+	MODERATE = 1,  ## Capped at [member battery_fps] at most.
+	SEVERE = 2,  ## Capped at [member battery_mode_fps] at most.
+}
+
+## The engine singleton the Android plugin registers.
+const ANDROID_PLUGIN_SINGLETON := "DevicePowerAndroid"
+## A status that stands for each back-off, for [method fps_cap].
+const _BACK_OFF_STATUS: Array[int] = [
+	ThermalStatus.NONE,
+	ThermalStatus.MODERATE,
+	ThermalStatus.SEVERE,
+]
+
+## Seconds between polls of a polled backend (the [JavaClassWrapper]
+## fallback) while the app is in the foreground. A charger plugged in
+## mid-game is picked up within this long. The game mode is read at start
+## and when the app resumes or regains focus (the Game Dashboard takes focus
+## to change it).
 @export var poll_interval: float = 2.0
+
+## Seconds between safety reads of a backend that pushes its changes (the
+## Android plugin), in case a notification is ever missed. Reads of the
+## plugin cost no system call. [code]0[/code] turns the safety read off.
+@export var safety_poll_interval: float = 30.0
 
 ## Whether to ask the platform for the rate the game runs at (see the class
 ## description). Off leaves the display to the platform's defaults.
 @export var vote_frame_rate: bool = true
 
-## The cap on battery or with battery saver on.
+## The cap on battery or with battery saver on, and the most that moderate
+## thermal pressure allows.
 @export var battery_fps: int = 60
 
-## The cap in the OS's Battery game mode.
+## The cap in the OS's Battery game mode, and the most that severe thermal
+## pressure allows.
 @export var battery_mode_fps: int = 30
+
+## Seconds the thermal status must stay below the current back-off before
+## the cap recovers. Backing off is immediate.
+@export var thermal_cooldown: float = 30.0
 
 var _backend: DevicePowerBackend = null
 var _power_source: int = PowerSource.UNKNOWN
 var _power_saver: Variant = null
 var _game_mode: int = GameMode.UNSUPPORTED
-var _clock: float = 0.0
+var _thermal_status: int = ThermalStatus.UNKNOWN
+## The back-off in force, after hysteresis.
+var _back_off: int = ThermalBackOff.NONE
+## When the status first dropped below [member _back_off], or -1.0.
+var _cooling_since: float = -1.0
+## The highest back-off the status asked for since [member _cooling_since].
+var _cooling_peak: int = ThermalBackOff.NONE
+## Seconds since the last poll.
+var _since_poll: float = 0.0
 var _peak_refresh_rate: float = 0.0
 var _refresh_rates := PackedFloat32Array()
 ## The last vote the platform accepted, or -1.0 when one is due.
@@ -78,19 +134,27 @@ var _voted: float = -1.0
 ## The last rate tried, so a failed vote is retried on polls, not every frame.
 var _tried: float = -1.0
 var _vote_logged := false
+## Returns the time in seconds; tests replace it with a fake clock.
+var _clock: Callable = _ticks_seconds
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	if _backend == null:
-		set_backend(_create_default_backend())
+		set_backend(select_backend(OS.get_name(), _engine_singleton))
 
 
 func _process(delta: float) -> void:
-	_clock += delta
-	if _clock >= poll_interval:
+	_since_poll += delta
+	var interval := (
+		safety_poll_interval if _backend and _backend.pushes_changes() else poll_interval
+	)
+	if interval > 0.0 and _since_poll >= interval:
 		refresh()
-	elif _vote_target() != _tried:
+		return
+	if _cooling_since >= 0.0 and _update_back_off():
+		changed.emit()
+	if _vote_target() != _tried:
 		# The game changed its cap (a menu, a demo): follow it now, not on the
 		# next poll. Reading the cap every frame costs nothing.
 		_vote()
@@ -98,23 +162,30 @@ func _process(delta: float) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		if not _backend:
+			return
 		# A resumed app may draw into a new surface, which has no vote yet.
 		_voted = -1.0
-		_read(true)
-		refresh()
+		_backend.request_update()
+		var differs := _read(true)
+		_vote()
+		if differs:
+			changed.emit()
 
 
 ## Replaces the backend and reads it at once. Tests inject a
 ## [DevicePowerMockBackend] here.
 func set_backend(backend: DevicePowerBackend) -> void:
-	assert(backend != null, "DevicePower.set_backend() requires a backend; use DevicePowerNullBackend.new().")
+	assert(
+		backend != null,
+		"DevicePower.set_backend() requires a backend; use DevicePowerNullBackend.new()."
+	)
+	if _backend and _backend.changed.is_connected(_on_backend_changed):
+		_backend.changed.disconnect(_on_backend_changed)
 	_backend = backend
-	_refresh_rates = PackedFloat32Array()
-	_peak_refresh_rate = 0.0
-	for rate in backend.get_refresh_rates():
-		if is_finite(rate) and rate > 0.0:
-			_refresh_rates.append(rate)
-			_peak_refresh_rate = maxf(_peak_refresh_rate, rate)
+	_backend.changed.connect(_on_backend_changed)
+	_back_off = ThermalBackOff.NONE
+	_cooling_since = -1.0
 	_voted = -1.0
 	_read(true)
 	_vote()
@@ -135,20 +206,30 @@ func refresh() -> void:
 		changed.emit()
 
 
-## A [enum PowerSource] value, as of the last poll.
+## A [enum PowerSource] value, as of the last read.
 func get_power_source() -> PowerSource:
 	return _power_source as PowerSource
 
 
-## Battery saver, as of the last poll: [code]true[/code], [code]false[/code],
+## Battery saver, as of the last read: [code]true[/code], [code]false[/code],
 ## or [code]null[/code] when unknown.
 func is_power_saver_enabled() -> Variant:
 	return _power_saver
 
 
-## A [enum GameMode] value, as of the last poll.
+## A [enum GameMode] value, as of the last read.
 func get_game_mode() -> GameMode:
 	return _game_mode as GameMode
+
+
+## A [enum ThermalStatus] value, as of the last read.
+func get_thermal_status() -> ThermalStatus:
+	return _thermal_status as ThermalStatus
+
+
+## The [enum ThermalBackOff] in force, after [member thermal_cooldown].
+func get_thermal_back_off() -> ThermalBackOff:
+	return _back_off as ThermalBackOff
 
 
 ## The display's highest refresh rate, or [code]0.0[/code] when unknown.
@@ -161,14 +242,45 @@ func get_refresh_rates() -> PackedFloat32Array:
 	return _refresh_rates
 
 
-## [method fps_cap] for the current state, with [member battery_fps] and
-## [member battery_mode_fps], then [method paced_cap] for this display.
-## [param refresh_rate] stands in for the peak refresh rate in Performance
-## mode when the peak is unknown.
+## [method fps_cap] for the current state, with [member battery_fps],
+## [member battery_mode_fps] and the thermal back-off in force, then
+## [method paced_cap] for this display. [param refresh_rate] stands in for
+## the peak refresh rate in Performance mode when the peak is unknown.
 func recommended_fps_cap(refresh_rate: float) -> int:
 	var peak := _peak_refresh_rate if _peak_refresh_rate > 0.0 else refresh_rate
-	var cap := fps_cap(_power_source, _power_saver, _game_mode, peak, battery_fps, battery_mode_fps)
+	var cap := fps_cap(
+		_power_source,
+		_power_saver,
+		_game_mode,
+		peak,
+		battery_fps,
+		battery_mode_fps,
+		_BACK_OFF_STATUS[_back_off],
+	)
 	return paced_cap(cap, _refresh_rates)
+
+
+## The backend for a platform: [param os_name] as [method OS.get_name]
+## reports it, and [param get_singleton] a [Callable] taking a singleton
+## name and returning the [Object] or [code]null[/code].
+static func select_backend(os_name: String, get_singleton: Callable) -> DevicePowerBackend:
+	if os_name != "Android":
+		return DevicePowerNullBackend.new()
+	var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
+	if plugin is Object and plugin != null:
+		var backend := DevicePowerAndroidPluginBackend.new(plugin)
+		if backend.is_compatible():
+			return backend
+		push_warning(
+			(
+				"DevicePower: the %s plugin speaks another API; falling back."
+				% ANDROID_PLUGIN_SINGLETON
+			)
+		)
+	var runtime: Variant = get_singleton.call("AndroidRuntime")
+	if runtime is Object and runtime != null:
+		return DevicePowerAndroidBackend.new(runtime)
+	return DevicePowerNullBackend.new()
 
 
 ## The lowest frame rate at or above [param cap] that the display can show
@@ -202,17 +314,33 @@ static func frame_rate_vote(cap: int, peak_refresh_rate: float) -> float:
 	return maxf(peak_refresh_rate, 0.0)
 
 
+## The [enum ThermalBackOff] a [enum ThermalStatus] calls for: none below
+## Moderate, Moderate for Moderate, Severe from Severe up. Light throttling
+## is left to the platform; unknown imposes nothing.
+static func thermal_back_off(thermal_status: int) -> int:
+	if thermal_status >= ThermalStatus.SEVERE:
+		return ThermalBackOff.SEVERE
+	if thermal_status >= ThermalStatus.MODERATE:
+		return ThermalBackOff.MODERATE
+	return ThermalBackOff.NONE
+
+
 ## The frame cap for a power state, for [member Engine.max_fps]: 0 means
 ## "no cap of ours", leaving the display's refresh rate (with V-Sync) as the
 ## limit.
 ##
-## [br]- An explicit OS game mode is the player's choice and wins:
-##   Performance runs at [param refresh_rate] (pass the panel's peak; capped
-##   at 240), Battery at [param battery_mode_fps].
+## [br]- An explicit OS game mode is the player's choice and wins over the
+##   power source: Performance runs at [param refresh_rate] (pass the panel's
+##   peak; capped at 240), Battery at [param battery_mode_fps].
 ## [br]- Otherwise external power is uncapped and the battery is held to
 ##   [param battery_fps]; battery saver counts as battery even on a charger.
 ## [br]- Unknown imposes nothing: a platform without a bridge keeps whatever
 ##   the game would do anyway.
+## [br]- Heat wins over everything, Performance mode included: at
+##   [param thermal_status] Moderate the cap is at most [param battery_fps],
+##   from Severe at most [param battery_mode_fps]. An uncapped game gets that
+##   cap. These thresholds are a starting point: calibrate them on your
+##   game's hottest scene and target devices.
 static func fps_cap(
 	power_source: int,
 	power_saver: Variant,
@@ -220,6 +348,26 @@ static func fps_cap(
 	refresh_rate: float,
 	battery_fps: int = 60,
 	battery_mode_fps: int = 30,
+	thermal_status: int = ThermalStatus.UNKNOWN,
+) -> int:
+	var cap := _power_cap(
+		power_source, power_saver, game_mode, refresh_rate, battery_fps, battery_mode_fps
+	)
+	match thermal_back_off(thermal_status):
+		ThermalBackOff.SEVERE:
+			return _tighter(cap, battery_mode_fps)
+		ThermalBackOff.MODERATE:
+			return _tighter(cap, battery_fps)
+	return cap
+
+
+static func _power_cap(
+	power_source: int,
+	power_saver: Variant,
+	game_mode: int,
+	refresh_rate: float,
+	battery_fps: int,
+	battery_mode_fps: int,
 ) -> int:
 	match game_mode:
 		GameMode.PERFORMANCE:
@@ -236,22 +384,89 @@ static func fps_cap(
 	return 0
 
 
-## Reads the backend into the fields. The game mode only on [param full]
-## reads: it changes through the Game Dashboard, which takes focus.
-## Comparisons are type-safe on purpose: a release export turns a script
-## error into a silent null, which a typed caller cannot survive.
+## The tighter of two caps, where 0 is no cap.
+static func _tighter(cap: int, limit: int) -> int:
+	if limit <= 0:
+		return cap
+	if cap <= 0:
+		return limit
+	return mini(cap, limit)
+
+
+## Reads the backend into the fields. A polled backend's game mode is read
+## only on [param full] reads: it changes through the Game Dashboard, which
+## takes focus. Comparisons are type-safe on purpose: a release export turns
+## a script error into a silent null, which a typed caller cannot survive.
 func _read(full: bool) -> bool:
-	_clock = 0.0
+	_since_poll = 0.0
 	var source := _backend.get_power_source()
+	if source < PowerSource.UNKNOWN or source > PowerSource.EXTERNAL:
+		source = PowerSource.UNKNOWN
 	var raw_saver: Variant = _backend.is_power_saver_enabled()
 	var saver: Variant = raw_saver if raw_saver is bool else null
-	var mode := _backend.get_game_mode() if full else _game_mode
-	var saver_differs: bool = typeof(saver) != typeof(_power_saver) or (saver is bool and saver != _power_saver)
-	var differs: bool = source != _power_source or saver_differs or mode != _game_mode
+	var mode := _game_mode
+	if full or _backend.pushes_changes():
+		mode = _backend.get_game_mode()
+		if mode < GameMode.UNSUPPORTED or mode > GameMode.CUSTOM:
+			mode = GameMode.UNSUPPORTED
+	var thermal := _backend.get_thermal_status()
+	if thermal < ThermalStatus.UNKNOWN or thermal > ThermalStatus.SHUTDOWN:
+		thermal = ThermalStatus.UNKNOWN
+	var saver_differs: bool = (
+		typeof(saver) != typeof(_power_saver) or (saver is bool and saver != _power_saver)
+	)
+	var differs: bool = (
+		source != _power_source or saver_differs or mode != _game_mode or thermal != _thermal_status
+	)
 	_power_source = source
 	_power_saver = saver
 	_game_mode = mode
+	_thermal_status = thermal
+	if _update_back_off():
+		differs = true
+	if full or _backend.pushes_changes():
+		if _read_refresh_rates():
+			differs = true
 	return differs
+
+
+## Applies hysteresis to the thermal back-off. Returns whether it changed.
+func _update_back_off() -> bool:
+	var wanted := thermal_back_off(_thermal_status)
+	var before := _back_off
+	if wanted >= _back_off:
+		_back_off = wanted
+		_cooling_since = -1.0
+		return _back_off != before
+	var now: float = _clock.call()
+	if _cooling_since < 0.0:
+		_cooling_since = now
+		_cooling_peak = wanted
+	else:
+		_cooling_peak = maxi(_cooling_peak, wanted)
+	if now - _cooling_since < thermal_cooldown:
+		return false
+	# Below the back-off for long enough: step down to the highest level asked
+	# for meanwhile, and keep cooling if the status is lower still.
+	_back_off = _cooling_peak
+	_cooling_since = now if wanted < _back_off else -1.0
+	_cooling_peak = wanted
+	return _back_off != before
+
+
+## Reads the refresh rates. Returns whether they changed.
+func _read_refresh_rates() -> bool:
+	var rates := PackedFloat32Array()
+	var peak := 0.0
+	for rate in _backend.get_refresh_rates():
+		if is_finite(rate) and rate > 0.0:
+			rates.append(rate)
+			peak = maxf(peak, rate)
+	if rates == _refresh_rates:
+		return false
+	_refresh_rates = rates
+	_peak_refresh_rate = peak
+	return true
 
 
 ## What to vote: the cap the game actually runs under.
@@ -260,7 +475,7 @@ func _vote_target() -> float:
 
 
 func _vote() -> void:
-	if not vote_frame_rate:
+	if not vote_frame_rate or not _backend:
 		return
 	var rate := _vote_target()
 	if rate == _voted:
@@ -273,10 +488,21 @@ func _vote() -> void:
 	# Logged once, where there is a platform to vote to.
 	if not _vote_logged and get_backend_name() != "null":
 		_vote_logged = true
-		print("DevicePower: frame rate vote %.1f via %s: %s" % [rate, get_backend_name(), "ok" if ok else "not made"])
+		print(
+			(
+				"DevicePower: frame rate vote %.1f via %s: %s"
+				% [rate, get_backend_name(), "ok" if ok else "not made"]
+			)
+		)
 
 
-func _create_default_backend() -> DevicePowerBackend:
-	if OS.get_name() == "Android" and Engine.has_singleton("AndroidRuntime"):
-		return DevicePowerAndroidBackend.new(Engine.get_singleton("AndroidRuntime"))
-	return DevicePowerNullBackend.new()
+func _on_backend_changed() -> void:
+	refresh()
+
+
+static func _engine_singleton(singleton_name: String) -> Object:
+	return Engine.get_singleton(singleton_name) if Engine.has_singleton(singleton_name) else null
+
+
+static func _ticks_seconds() -> float:
+	return Time.get_ticks_msec() / 1000.0

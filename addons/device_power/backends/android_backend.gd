@@ -7,6 +7,11 @@ extends DevicePowerBackend
 ## Reads Android's power state through [JavaClassWrapper], with no Java code
 ## of its own to build or ship.
 ##
+## This is the fallback: [DevicePowerAndroidPluginBackend] is used instead
+## whenever the [code]DevicePowerAndroid[/code] plugin is in the export (a
+## Gradle build with this addon enabled). This one is polled, and reads the
+## game mode only when the facade asks for a full read.
+##
 ## [b]Power source[/b] comes from the sticky [code]ACTION_BATTERY_CHANGED[/code]
 ## broadcast ([code]registerReceiver(null, filter)[/code] returns the last one
 ## without registering anything). Its [code]plugged[/code] extra is the right
@@ -19,6 +24,9 @@ extends DevicePowerBackend
 ## reports [code]UNSUPPORTED[/code] unless the app is classified as a game
 ## ([code]android:appCategory="game"[/code]).
 ##
+## [b]Thermal status[/b] is [code]PowerManager.getCurrentThermalStatus()[/code]
+## (API 29+), read on every poll.
+##
 ## [b]Frame rate vote[/b] is [code]Surface.setFrameRate()[/code] (API 31+) on
 ## Godot's render surface, with [code]CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS[/code]
 ## so a change of plan mid-game (a charger, a menu) never blanks the screen
@@ -28,6 +36,10 @@ extends DevicePowerBackend
 ##
 ## Every Java call is checked with [method JavaClassWrapper.get_exception]; a
 ## failure reads as "unknown", never as a guess.
+
+# Every Java call can fail, and each failure is an early "unknown" return, so
+# the readers here have more returns than gdlint's default allows.
+# gdlint: disable=max-returns
 
 const _BATTERY_CHANGED := "android.intent.action.BATTERY_CHANGED"
 const _FRAME_RATE_COMPATIBILITY_DEFAULT := 0
@@ -78,8 +90,14 @@ func is_power_saver_enabled() -> Variant:
 	if power == null:
 		return null
 	var saver = power.isPowerSaveMode()
+	if not _ok():
+		return null
 	# The wrapper hands a Java boolean back as an int; the contract is a bool.
-	return bool(saver) if _ok() and saver != null else null
+	if saver is bool:
+		return saver
+	if saver is int:
+		return saver != 0
+	return null
 
 
 func get_game_mode() -> int:
@@ -89,7 +107,21 @@ func get_game_mode() -> int:
 	if manager == null:
 		return 0
 	var mode = manager.getGameMode()
-	return int(mode) if _ok() and mode != null else 0
+	if not _ok() or not (mode is int) or mode < 0 or mode > 4:
+		return 0
+	return mode
+
+
+func get_thermal_status() -> int:
+	if _sdk < 29:
+		return -1
+	var power = _service("power")
+	if power == null:
+		return -1
+	var status = power.getCurrentThermalStatus()
+	if not _ok() or not (status is int) or status < 0 or status > 6:
+		return -1
+	return status
 
 
 func get_refresh_rates() -> PackedFloat32Array:
@@ -120,8 +152,9 @@ func get_refresh_rates() -> PackedFloat32Array:
 			continue
 		if float(r) > 0.0:
 			rates.append(float(r))
-		# A panel can also run a mode at lower rates it switches to seamlessly
-		# (Galaxy A16: one 90 Hz mode, 60 as an alternative).
+		# A panel can also run a mode at lower rates it switches to seamlessly.
+		# Only what apps are told counts: a Galaxy A16 lists 60 as an
+		# alternative of its one 90 Hz mode in dumpsys, but apps get none.
 		if _sdk >= 31:
 			var alternatives = mode.getAlternativeRefreshRates()
 			if not _ok():
@@ -139,7 +172,9 @@ func vote_frame_rate(rate: float) -> bool:
 	var surface = _surface()
 	if surface == null:
 		return false
-	surface.setFrameRate(rate, _FRAME_RATE_COMPATIBILITY_DEFAULT, _CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS)
+	surface.setFrameRate(
+		rate, _FRAME_RATE_COMPATIBILITY_DEFAULT, _CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS
+	)
 	return _ok()
 
 

@@ -5,20 +5,39 @@ class_name DevicePowerMockBackend
 extends DevicePowerBackend
 
 ## Scriptable backend for tests: set the fields, then call
-## [code]DevicePower.refresh()[/code].
+## [code]DevicePower.refresh()[/code], or set [member push] and call
+## [method push_change] to act like a backend that emits [signal changed].
 
 var power_source: int = -1
 var power_saver: Variant = null
 var game_mode: int = 0
+var thermal_status: int = -1
 var refresh_rates: PackedFloat32Array = PackedFloat32Array()
+## Whether this mock reports that it pushes changes.
+var push: bool = false
 ## Whether [method vote_frame_rate] succeeds, as a missing surface would not.
 var vote_ok: bool = true
 ## Every rate passed to [method vote_frame_rate], oldest first.
 var votes: Array[float] = []
+## How many times [method request_update] was called.
+var update_requests: int = 0
 
 
 func get_backend_name() -> String:
 	return "mock"
+
+
+func pushes_changes() -> bool:
+	return push
+
+
+func request_update() -> void:
+	update_requests += 1
+
+
+## Emits [signal changed], as a pushing backend does.
+func push_change() -> void:
+	changed.emit()
 
 
 func get_power_source() -> int:
@@ -31,6 +50,10 @@ func is_power_saver_enabled() -> Variant:
 
 func get_game_mode() -> int:
 	return game_mode
+
+
+func get_thermal_status() -> int:
+	return thermal_status
 
 
 func get_refresh_rates() -> PackedFloat32Array:
