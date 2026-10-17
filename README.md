@@ -13,7 +13,7 @@ Everywhere else it reports "unknown", which imposes nothing.
 
 - Repository: <https://github.com/KevinTCoughlin/godot-device-power>
 - License: MIT (see [`LICENSE`](LICENSE))
-- Status: 0.1.0, not yet released. See [What has been tested](#what-has-been-tested).
+- Status: 0.1.0. See [What has been tested](#what-has-been-tested).
 
 ## Why
 
@@ -276,8 +276,22 @@ override-status 3` to exercise the battery and thermal paths.
 - The policy, pacing and vote behaviour, and the `JavaClassWrapper` backend,
   on the three devices above, as part of a shipping game.
 - The Kotlin plugin, the thermal back-off and the plugin backend: unit tests,
-  the GDScript suite against a fake singleton, and a Gradle export of the demo
-  (the AAR is merged and the singleton registered). **Not yet run on hardware.**
+  the GDScript suite against a fake singleton, a Gradle export of the demo,
+  and on the same three devices inside the game (Android 16; charger state
+  faked with `dumpsys battery unplug`, heat with
+  `cmd thermalservice override-status`):
+
+  | | Pixel 10 (60/120 Hz) | Lenovo Tab (90 Hz) | Galaxy A16 (90 Hz to apps) |
+  |---|---|---|---|
+  | Charger | 120 | 90 | 90 |
+  | Battery | 60 | 90 | 90 |
+  | Moderate heat | 60 | 45 | 45 |
+  | Severe heat | 30 | 30 | 30 |
+
+  On the Pixel, within one session: a change of heat or charger reached the
+  cap within about half a second; after heat cleared the cap was held for the
+  30 s cool-down and then released; after the app went to the background and
+  came back, its new surface carried the 120 Hz vote again.
 
 ## Prior art
 
