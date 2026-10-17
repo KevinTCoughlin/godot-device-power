@@ -124,11 +124,26 @@ class RefreshRatesTest {
     fun duplicatesAndGarbageAreDropped() {
         val current = mode(100, 100, 60f, 60f, Float.NaN, -1f, 0f, Float.POSITIVE_INFINITY)
         val modes = listOf(current, mode(100, 100, 60.001f), mode(100, 100, 59.94f))
+        assertArrayEquals(floatArrayOf(60f), RefreshRates.atResolution(current, modes), 0f)
+    }
+
+    @Test
+    fun pixel10AlternativesDoNotDuplicateOtherModes() {
+        // As a Pixel 10 reports them: each mode lists the other as an
+        // alternative, with float noise. Seen as [60, 120, 120] on device.
+        val sixty = mode(1080, 2424, 60.0000038f, 120.0000076f)
+        val oneTwenty = mode(1080, 2424, 120.0000076f, 60.0000038f)
         assertArrayEquals(
-            floatArrayOf(59.94f, 60f),
-            RefreshRates.atResolution(current, modes),
+            floatArrayOf(60.0000038f, 120.0000076f),
+            RefreshRates.atResolution(sixty, listOf(sixty, oneTwenty)),
             0f,
         )
+    }
+
+    @Test
+    fun ratesWithinHalfAHertzAreOne() {
+        val current = mode(1, 1, 90f, 89.7f, 90.4f, 89.4f)
+        assertArrayEquals(floatArrayOf(89.4f, 90f), RefreshRates.atResolution(current, emptyList()), 0f)
     }
 
     @Test

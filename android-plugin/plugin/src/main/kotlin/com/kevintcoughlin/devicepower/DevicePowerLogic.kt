@@ -83,12 +83,17 @@ data class DisplayModeSpec(
 )
 
 object RefreshRates {
-    /** Rates within this many Hz are one rate (59.94 and 60.000004 are not). */
-    private const val SAME_RATE_HZ = 0.01f
+    /**
+     * Rates within this many Hz are one rate: display rates carry float
+     * noise (60.0000038, 120.0000076), and one rate can be listed by several
+     * modes and their alternatives. Matches DevicePowerBackend.SAME_RATE_HZ.
+     */
+    const val SAME_RATE_HZ = 0.5f
 
     /**
      * The rates the display can run at its current resolution, ascending:
-     * every supported mode of that size, plus each one's alternative rates.
+     * every supported mode of that size, plus each one's alternative rates,
+     * each rate once (within [SAME_RATE_HZ]; the first seen is kept).
      * Non-finite and non-positive rates are dropped. Empty when the current
      * mode is unknown.
      *

@@ -150,9 +150,11 @@ func get_refresh_rates() -> PackedFloat32Array:
 			return PackedFloat32Array()
 		if int(w) != int(width) or int(h) != int(height):
 			continue
-		if float(r) > 0.0:
-			rates.append(float(r))
+		if r is float or r is int:
+			merge_refresh_rate(rates, r)
 		# A panel can also run a mode at lower rates it switches to seamlessly.
+		# Those repeat other modes' rates (a Pixel 10's 60 Hz mode lists 120),
+		# so every rate is merged within SAME_RATE_HZ.
 		# Only what apps are told counts: a Galaxy A16 lists 60 as an
 		# alternative of its one 90 Hz mode in dumpsys, but apps get none.
 		if _sdk >= 31:
@@ -161,8 +163,8 @@ func get_refresh_rates() -> PackedFloat32Array:
 				return PackedFloat32Array()
 			if alternatives != null:
 				for alt in alternatives:
-					if float(alt) > 0.0 and not rates.has(float(alt)):
-						rates.append(float(alt))
+					if alt is float or alt is int:
+						merge_refresh_rate(rates, alt)
 	return rates
 
 

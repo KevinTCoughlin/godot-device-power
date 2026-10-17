@@ -96,8 +96,8 @@ func get_refresh_rates() -> PackedFloat32Array:
 	if not (raw is PackedFloat32Array or raw is PackedFloat64Array or raw is Array):
 		return rates
 	for rate: Variant in raw:
-		if (rate is float or rate is int) and is_finite(rate) and rate > 0.0:
-			rates.append(rate)
+		if rate is float or rate is int:
+			merge_refresh_rate(rates, rate)
 	return rates
 
 

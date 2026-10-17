@@ -81,6 +81,31 @@ func test_refresh_rates_drop_garbage_and_accept_other_array_types() -> void:
 	assert_eq(backend.get_refresh_rates(), PackedFloat32Array([60.0, 120.0]), "a plain array")
 
 
+func test_duplicate_rates_are_merged_within_half_a_hertz() -> void:
+	# A Pixel 10 through the JavaClassWrapper backend: the 60 Hz mode's
+	# alternative 120 repeated the 120 Hz mode, with float noise.
+	plugin.refresh_rates = PackedFloat32Array([60.0000038, 120.0000076, 120.0000076, 119.7])
+	assert_eq(
+		backend.get_refresh_rates(), PackedFloat32Array([60.0000038, 120.0000076]), "one of each"
+	)
+
+
+func test_merge_refresh_rate() -> void:
+	var rates := PackedFloat32Array()
+	assert_true(DevicePowerBackend.merge_refresh_rate(rates, 60.0000038), "first 60")
+	assert_true(DevicePowerBackend.merge_refresh_rate(rates, 120.0000076), "first 120")
+	assert_false(DevicePowerBackend.merge_refresh_rate(rates, 120.0000076), "exact repeat")
+	assert_false(DevicePowerBackend.merge_refresh_rate(rates, 120.4), "within 0.5 Hz")
+	assert_false(DevicePowerBackend.merge_refresh_rate(rates, 59.94), "59.94 is 60")
+	assert_true(DevicePowerBackend.merge_refresh_rate(rates, 90.0), "a new rate")
+	assert_false(DevicePowerBackend.merge_refresh_rate(rates, NAN), "NaN")
+	assert_false(DevicePowerBackend.merge_refresh_rate(rates, 0.0), "zero")
+	assert_false(DevicePowerBackend.merge_refresh_rate(rates, -60.0), "negative")
+	assert_eq(
+		rates, PackedFloat32Array([60.0000038, 120.0000076, 90.0]), "first seen kept, in order"
+	)
+
+
 func test_vote_results() -> void:
 	assert_true(backend.vote_frame_rate(120.0), "true")
 	assert_eq(plugin.votes, [120.0], "passed through")

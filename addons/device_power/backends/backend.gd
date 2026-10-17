@@ -18,6 +18,9 @@ extends RefCounted
 @warning_ignore("unused_signal")
 signal changed
 
+## Refresh rates closer than this are one rate.
+const SAME_RATE_HZ := 0.5
+
 
 ## Short identifier used for diagnostics, e.g. [code]"android_plugin"[/code].
 func get_backend_name() -> String:
@@ -61,6 +64,22 @@ func get_thermal_status() -> int:
 ## or an empty array when unknown.
 func get_refresh_rates() -> PackedFloat32Array:
 	return PackedFloat32Array()
+
+
+## Adds [param rate] to [param rates] unless it is not a usable rate (not
+## finite, or not positive) or one already there is within
+## [constant SAME_RATE_HZ]. Display rates carry float noise (60.0000038,
+## 120.0000076), and the same rate can come from several modes and their
+## alternative rates, so exact equality is not enough. Returns whether the
+## rate was added.
+static func merge_refresh_rate(rates: PackedFloat32Array, rate: float) -> bool:
+	if not is_finite(rate) or rate <= 0.0:
+		return false
+	for known in rates:
+		if absf(known - rate) < SAME_RATE_HZ:
+			return false
+	rates.append(rate)
+	return true
 
 
 ## Asks the platform to run the game's surface at [param rate] frames per
