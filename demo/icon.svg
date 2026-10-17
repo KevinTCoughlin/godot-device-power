@@ -1,0 +1,11 @@
+<!--
+SPDX-FileCopyrightText: 2026 Kevin Coughlin
+
+SPDX-License-Identifier: MIT
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#1d2229"/>
+  <rect x="30" y="40" width="60" height="48" rx="8" fill="none" stroke="#478cbf" stroke-width="8"/>
+  <path d="M94 54v20" stroke="#478cbf" stroke-width="8" stroke-linecap="round"/>
+  <path d="M64 46 52 66h14l-6 16 16-22H62l6-14z" fill="#e0e6ed"/>
+</svg>
