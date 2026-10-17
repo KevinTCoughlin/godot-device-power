@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: godot-device-power
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+type: software
+authors:
+  - given-names: Kevin
+    family-names: Coughlin
+    alias: KevinTCoughlin
+repository-code: "https://github.com/KevinTCoughlin/godot-device-power"
+url: "https://github.com/KevinTCoughlin/godot-device-power"
+abstract: >-
+  A Godot 4 addon that reports where a device's power comes from, battery
+  saver, Android Game Mode and thermal status, and turns them into a frame cap
+  and a display frame rate vote, with a Kotlin Android plugin that pushes
+  changes and votes on Godot's render surface.
+keywords:
+  - godot
+  - android
+  - battery
+  - thermal
+  - frame-rate
+  - game-mode
+license: MIT
+version: 0.1.0

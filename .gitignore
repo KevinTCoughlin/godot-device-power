@@ -1,0 +1,27 @@
+# Godot's import cache and editor state: generated, never committed.
+.godot/
+.import/
+export_presets.cfg
+
+# Godot's Android build template, installed per checkout for Gradle exports.
+android/
+
+# AARs built by scripts/build_android.sh, and shipped in release archives.
+addons/device_power/bin/
+
+# Gradle state and outputs for the Kotlin plugin.
+android-plugin/.gradle/
+android-plugin/.kotlin/
+android-plugin/build/
+android-plugin/plugin/build/
+android-plugin/local.properties
+
+# Release staging and local exports.
+dist/
+build/
+
+# Editor and OS noise.
+*.swp
+.DS_Store
+.idea/
+.vscode/

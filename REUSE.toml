@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 Kevin Coughlin
+#
+# SPDX-License-Identifier: MIT
+
+version = 1
+SPDX-PackageName = "godot-device-power"
+SPDX-PackageSupplier = "Kevin Coughlin (https://github.com/KevinTCoughlin)"
+SPDX-PackageDownloadLocation = "https://github.com/KevinTCoughlin/godot-device-power"
+
+# Formats that cannot carry a comment header: Godot resources and project
+# metadata, citation metadata, license texts and git attributes.
+[[annotations]]
+path = [
+    "project.godot",
+    "demo/demo.tscn",
+    "addons/device_power/plugin.cfg",
+    "addons/device_power/LICENSE",
+    "CITATION.cff",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes",
+    "android-plugin/.gdignore",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Kevin Coughlin"
+SPDX-License-Identifier = "MIT"
+
+# Godot writes a `.uid` sidecar next to every script and an `.import` file
+# next to every asset. They are generated, comment-free, and committed so
+# resource references stay stable.
+[[annotations]]
+path = ["**/*.uid", "**/*.import"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Kevin Coughlin"
+SPDX-License-Identifier = "MIT"
+
+# The Gradle wrapper, as `gradle wrapper` generates it.
+[[annotations]]
+path = [
+    "android-plugin/gradlew",
+    "android-plugin/gradlew.bat",
+    "android-plugin/gradle/wrapper/gradle-wrapper.jar",
+    "android-plugin/gradle/wrapper/gradle-wrapper.properties",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2015-2021 the original authors of Gradle"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Documentation and repository metadata.
+[[annotations]]
+path = [
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "GOVERNANCE.md",
+    "SECURITY.md",
+    "CODE_OF_CONDUCT.md",
+    "DCO.txt",
+    ".github/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Kevin Coughlin"
+SPDX-License-Identifier = "MIT"
