@@ -8,6 +8,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # A release has a week to be found broken or malicious before it is proposed.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci"
     labels:
@@ -25,6 +28,8 @@ updates:
     directory: "/android-plugin"
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
     labels:
@@ -34,3 +39,4 @@ updates:
       - dependency-name: "com.android.library"
       - dependency-name: "org.jetbrains.kotlin.android"
       - dependency-name: "org.godotengine:godot"
+      - dependency-name: "gradle-wrapper"
