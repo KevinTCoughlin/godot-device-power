@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 Kevin Coughlin
+#
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  gdscript:
+    name: GDScript suite and editor load (Godot ${{ matrix.godot_version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        godot_version: [4.7.2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: chickensoft-games/setup-godot@ac93246ea68518a384c1c280a496e5989341f2f6 # v2.4.3
+        with:
+          version: ${{ matrix.godot_version }}
+          use-dotnet: false
+          include-templates: false
+      # Mock- and fake-backed: no device, display or Android SDK needed.
+      - name: Run the GDScript suite
+        run: ./scripts/run_tests.sh
+      - name: Load the editor plugin and export plugin
+        run: ./scripts/check.sh editor
+
+  android:
+    name: Android plugin (Gradle build, unit tests, lint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      # Read-only on pull requests and tags: only main writes the cache.
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      # The runner image ships the Android SDK (ANDROID_HOME) with its
+      # licences accepted; AGP installs platform 36 if the image lacks it.
+      - name: Build the AARs, run the JVM unit tests and Android lint
+        run: ./scripts/build_android.sh build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: device_power-aars
+          path: addons/device_power/bin/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: android-reports
+          path: android-plugin/plugin/build/reports/
+
+  lint:
+    name: Lint (gdformat, gdlint, shellcheck)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # Tool versions are pinned in scripts/check.sh and run through uvx, so
+      # these match a local `scripts/check.sh lint` exactly.
+      - name: gdformat and gdlint
+        run: ./scripts/check.sh gdscript
+      - name: bash -n and shellcheck
+        run: ./scripts/check.sh shell
+
+  reuse:
+    name: REUSE compliance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+
+  workflows:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+
+  dco:
+    name: DCO sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # Every commit in the pull request needs a Signed-off-by line naming its
+      # author (CONTRIBUTING.md). Merge commits are exempt.
+      - name: Check every commit is signed off by its author
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
+            author="$(git show -s --format='%an <%ae>' "$sha")"
+            if ! git show -s --format=%B "$sha" | grep -qxF "Signed-off-by: ${author}"; then
+              echo "::error::$(git show -s --format='%h %s' "$sha") has no 'Signed-off-by: ${author}'"
+              missing=1
+            fi
+          done
+          exit "$missing"

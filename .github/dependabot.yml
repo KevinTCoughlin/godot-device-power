@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 Kevin Coughlin
+#
+# SPDX-License-Identifier: MIT
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # AGP, Kotlin and Gradle deliberately match Godot's Android build template
+  # (see android-plugin/build.gradle.kts), and the Godot library matches the
+  # engine version the addon is tested with. They move when Godot does, by
+  # hand, so only test dependencies are proposed here.
+  - package-ecosystem: gradle
+    directory: "/android-plugin"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "build"
+    labels:
+      - dependencies
+      - android
+    ignore:
+      - dependency-name: "com.android.library"
+      - dependency-name: "org.jetbrains.kotlin.android"
+      - dependency-name: "org.godotengine:godot"

@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 Kevin Coughlin
+#
+# SPDX-License-Identifier: MIT
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to package, without the leading v (e.g. 0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package the addon with its AARs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+          else
+            version="${REF_NAME#v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Not a version: $version"
+            exit 1
+          fi
+          grep -qx "version=\"${version}\"" addons/device_power/plugin.cfg || {
+            echo "::error::addons/device_power/plugin.cfg does not say version=\"${version}\""
+            exit 1
+          }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      # A release builds from nothing cached.
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-disabled: true
+
+      # `build`, not just assemble: a release ships only AARs whose unit tests
+      # and Android lint passed.
+      - name: Build the AARs
+        run: ./scripts/build_android.sh build
+
+      - name: Stage the archive
+        id: stage
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="godot-device-power-${VERSION}"
+          stage="dist/${name}"
+          mkdir -p "${stage}/addons"
+          cp -r addons/device_power "${stage}/addons/"
+          cp README.md LICENSE CHANGELOG.md "${stage}/"
+
+          # The archive ships only what a game installs: the addon with both
+          # AARs, no tests, demo or Kotlin sources.
+          test -f "${stage}/addons/device_power/bin/debug/device_power-debug.aar"
+          test -f "${stage}/addons/device_power/bin/release/device_power-release.aar"
+          test -f "${stage}/addons/device_power/plugin.cfg"
+          test -f "${stage}/addons/device_power/export_plugin.gd"
+          test -f "${stage}/addons/device_power/device_power.gd"
+          test ! -e "${stage}/tests"
+
+          (cd dist && zip -q -r "${name}.zip" "${name}")
+          (cd dist && sha256sum "${name}.zip" > "${name}.zip.sha256")
+          unzip -l "dist/${name}.zip"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: godot-device-power
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish draft release
+    needs: package
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: godot-device-power
+          path: dist
+
+      # A draft: the maintainer adds the device results and publishes it.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/*.zip dist/*.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" --draft --generate-notes --verify-tag

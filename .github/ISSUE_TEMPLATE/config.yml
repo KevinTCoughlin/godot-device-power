@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Kevin Coughlin
+#
+# SPDX-License-Identifier: MIT
+
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/KevinTCoughlin/godot-device-power/security/advisories/new
+    about: Report privately. Please do not open a public issue.
+  - name: Question or usage help
+    url: https://github.com/KevinTCoughlin/godot-device-power/discussions
+    about: Ask in Discussions; check the README first.
