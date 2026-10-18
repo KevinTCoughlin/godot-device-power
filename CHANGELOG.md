@@ -8,7 +8,7 @@ Before 1.0 the public API may change in a minor release.
 
 ## [Unreleased]
 
-## 0.1.0 (unreleased)
+## [0.1.0] - 2026-10-17
 
 First version as a standalone project. The addon was written for, and first
 shipped in, the author's game Salt Line; this release extracts it and adds the
@@ -51,3 +51,26 @@ Android plugin and thermal back-off.
   error is logged; JVM unit tests for the plugin's logic; an editor-load smoke
   test; demo project; CI and a draft-release workflow that attaches the addon
   with built AARs.
+
+### Fixed before release
+
+- The editor plugin adds the `DevicePower` autoload in `_enable_plugin()` and
+  removes it in `_disable_plugin()`. Doing it on every editor start and quit
+  made a game's headless Android export rewrite `project.godot`, stripping
+  its comments and dropping the autoload line.
+- The plugin's battery receiver updates only the power source on
+  `ACTION_BATTERY_CHANGED`, which fires on every level, voltage and
+  temperature tick.
+- Refresh rates within half a hertz of each other count as one (a Pixel 10
+  listed 120 Hz twice).
+
+### Verified on devices
+
+On a Pixel 10 (60/120 Hz), a Lenovo Tab TB336FU (90 Hz) and a Galaxy A16
+(90 Hz as apps see it), all Android 16, inside a shipping game: 120/90/90 fps
+on a charger, 60/90/90 on battery, 60/45/45 at Moderate heat, 30 at Severe;
+live charger and heat changes reach the cap within about half a second, and
+the frame rate vote survives the app going to the background.
+
+[Unreleased]: https://github.com/KevinTCoughlin/godot-device-power/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/KevinTCoughlin/godot-device-power/releases/tag/v0.1.0

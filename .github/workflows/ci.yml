@@ -124,7 +124,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       # Every commit in the pull request needs a Signed-off-by line naming its
-      # author (CONTRIBUTING.md). Merge commits are exempt.
+      # author (CONTRIBUTING.md). Merge commits are exempt, and so are
+      # Dependabot's own commits: it cannot sign off, and its version bumps
+      # are reviewed like any other change before they merge.
       - name: Check every commit is signed off by its author
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -134,6 +136,9 @@ jobs:
           missing=0
           for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
             author="$(git show -s --format='%an <%ae>' "$sha")"
+            if [ "$author" = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>" ]; then
+              continue
+            fi
             if ! git show -s --format=%B "$sha" | grep -qxF "Signed-off-by: ${author}"; then
               echo "::error::$(git show -s --format='%h %s' "$sha") has no 'Signed-off-by: ${author}'"
               missing=1

@@ -20,7 +20,8 @@ git commit -s
 ```
 
 which appends `Signed-off-by: Your Name <you@example.com>`. By signing off you
-certify the DCO's terms. Commits without a sign-off cannot be merged.
+certify the DCO's terms. Commits without a sign-off cannot be merged. The
+one exception is Dependabot's own version bumps, which it cannot sign off.
 
 ## Setting up
 
