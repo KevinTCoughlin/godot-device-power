@@ -29,11 +29,56 @@ that, in one place, with a policy you can read and replace.
 
 ## Requirements
 
-- Godot 4.7 (4.7.2 is what CI and the device tests use).
+- Godot 4.7.x (4.7.2, the current stable, is what CI and the device tests use).
+  Godot 4.8 beta 2 is exercised as a preview and is not a production target
+  yet. See [Godot 4.8 beta 2](#godot-48-beta-2-preview).
 - For the Android plugin: an Android export with **Use Gradle Build** on
   (Godot's Android build template installed), minSdk 24, as Godot's own.
   Without a Gradle build the addon still works on Android through the
   `JavaClassWrapper` fallback.
+
+### Godot 4.8 beta 2 (preview)
+
+4.8 beta 2 shipped with export templates on 29 October 2026 (engine
+`4.8.beta2.official.cafc17a19`). It is still a preview. 4.7.2 stays the
+supported engine, and this addon is still built against `4.7.2.stable`.
+
+Checked against the official editor, export templates and `godot-lib` AAR:
+
+- The headless GDScript suite and the editor-load smoke test pass, and
+  opening the project does not rewrite `project.godot`. CI runs both on
+  4.8 beta 2 next to 4.7.2. The 4.8 job does not fail the workflow.
+- `GodotPlugin`, `SignalInfo`, `UsedByGodot`, `AndroidRuntime` and
+  `JavaClassWrapper` are unchanged. `EditorExportPlugin._get_android_libraries`
+  is unchanged, so the export plugin and the `JavaClassWrapper` fallback use
+  the same calls as on 4.7.2. `scripts/check_godot_lib.sh` compiles the Kotlin
+  plugin against the beta's `godot-lib` AAR (published with the engine
+  release; Maven Central still ends at `4.7.2.stable`).
+- The beta's Android template keeps Kotlin 2.1.21, Java 17, minSdk 24,
+  compile/target SDK 36 and NDK r29. Its Android Gradle Plugin is 8.13.2
+  where 4.7.2's is 8.6.1. This library stays on 8.6.1. On 2 November 2026
+  the same arm64 Gradle release of this demo (the 4.7.2-built plugin AAR,
+  one ABI, release, the same keystore) was 74,545,214 bytes on 4.7.2 and
+  68,248,544 bytes on 4.8 beta 2. `libgodot_android.so` accounts for that:
+  71,114,944 bytes against 64,818,536. The rest of each APK differs by a
+  few hundred bytes. Both APKs are arm64-only, minSdk 24, target SDK 36,
+  and register `DevicePowerAndroid`.
+
+The engine-build Python bump (3.9 to 3.10), the BaseButton touch fix and the
+Compatibility multiply-blend fix do not change this addon.
+
+These device checks are still open. On an arm64 device, before treating 4.8
+as supported:
+
+- Launch the arm64 Gradle export and confirm `get_backend_name()` is
+  `android_plugin`. Launch a non-Gradle export and confirm the
+  `JavaClassWrapper` backend (`android`).
+- Power and thermal signals: charger, battery (`adb shell dumpsys battery
+  unplug`, then `dumpsys battery reset`), battery saver, and
+  `adb shell cmd thermalservice override-status`.
+- Frame cap: the panel's peak on external power, the battery cap on battery,
+  the thermal cap when hot, and the same vote still applied after the app
+  is backgrounded and resumed.
 
 ## Installation
 

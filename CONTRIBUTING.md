@@ -55,7 +55,10 @@ which is:
 ```
 
 `scripts/check.sh` runs every Python tool through `uvx` at a version pinned in
-the script, so local results match CI exactly.
+the script, so local results match CI exactly. Godot 4.8 beta 2 is a separate,
+non-blocking CI entry. `scripts/check_godot_lib.sh` compiles the Android
+plugin against that release's `godot-lib` AAR; it is not part of
+`scripts/check.sh check`, and the release pin stays `4.7.2.stable`.
 
 - **gdlint** reads `gdlintrc`; its deviations from the gdtoolkit defaults are
   explained there.

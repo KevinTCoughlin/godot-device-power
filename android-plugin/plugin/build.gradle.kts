@@ -9,6 +9,9 @@ plugins {
 
 // Keep in step with addons/device_power/plugin.cfg and export_plugin.gd.
 val pluginName = "device_power"
+// Maven Central's newest org.godotengine:godot. 4.8 previews are not published
+// there. -PgodotLibAar points compileOnly at a release AAR instead
+// (scripts/check_godot_lib.sh); it does not change what a release builds.
 val godotVersion = "4.7.2.stable"
 
 android {
@@ -55,7 +58,12 @@ kotlin {
 
 dependencies {
     // Provided by the game's own Godot library at run time.
-    compileOnly("org.godotengine:godot:$godotVersion")
+    val godotLibAar = providers.gradleProperty("godotLibAar")
+    if (godotLibAar.isPresent && godotLibAar.get().isNotBlank()) {
+        compileOnly(files(godotLibAar.get()))
+    } else {
+        compileOnly("org.godotengine:godot:$godotVersion")
+    }
     testImplementation("junit:junit:4.13.2")
 }
 

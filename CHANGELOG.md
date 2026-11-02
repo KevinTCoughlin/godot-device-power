@@ -8,6 +8,14 @@ Before 1.0 the public API may change in a minor release.
 
 ## [Unreleased]
 
+### Changed
+
+- Godot 4.8 beta 2 is covered as a preview, beside 4.7.2. CI runs the GDScript
+  suite and the editor-load check on 4.8 beta 2 without failing the stable
+  jobs, and compiles the Android plugin against that release's `godot-lib`
+  AAR. The plugin is still built and shipped against `4.7.2.stable`. Device
+  checks for 4.8 are listed in the README and have not been run.
+
 ## [0.1.0] - 2026-10-17
 
 First version as a standalone project. The addon was written for, and first
