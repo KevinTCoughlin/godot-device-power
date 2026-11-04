@@ -40,3 +40,6 @@ updates:
       - dependency-name: "org.jetbrains.kotlin.android"
       - dependency-name: "org.godotengine:godot"
       - dependency-name: "gradle-wrapper"
+    groups:
+      gradle:
+        patterns: ["*"]
