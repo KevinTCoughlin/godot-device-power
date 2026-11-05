@@ -13,7 +13,7 @@ Everywhere else it reports "unknown", which imposes nothing.
 
 - Repository: <https://github.com/KevinTCoughlin/godot-device-power>
 - License: MIT (see [`LICENSE`](LICENSE))
-- Status: 0.1.0. See [What has been tested](#what-has-been-tested).
+- Status: 0.1.1. See [What has been tested](#what-has-been-tested).
 
 ## Why
 
