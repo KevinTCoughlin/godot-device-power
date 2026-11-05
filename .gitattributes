@@ -6,3 +6,21 @@
 *.bat text eol=crlf
 *.jar binary
 *.aar binary
+
+# Keep GitHub's "Source code (zip)" lean: it ships the addon only, as the
+# Godot Asset Store guide recommends. Release archives are staged separately.
+/.*                 export-ignore
+/CITATION.cff       export-ignore
+/CODE_OF_CONDUCT.md export-ignore
+/CONTRIBUTING.md    export-ignore
+/DCO.txt            export-ignore
+/GOVERNANCE.md      export-ignore
+/LICENSES           export-ignore
+/REUSE.toml         export-ignore
+/SECURITY.md        export-ignore
+/android-plugin     export-ignore
+/demo               export-ignore
+/gdlintrc           export-ignore
+/project.godot      export-ignore
+/scripts            export-ignore
+/tests              export-ignore
