@@ -8,6 +8,14 @@ Before 1.0 the public API may change in a minor release.
 
 ## [Unreleased]
 
+### Added
+
+- A `godot-device-power-<version>-asset-store.zip` release archive for the
+  Godot Asset Store, rooted at `addons/` with `README.md` and `CHANGELOG.md`
+  inside `addons/device_power/` beside its `LICENSE`.
+- A 16:9 store thumbnail at `.github/store/thumbnail.png`, and `export-ignore`
+  rules so GitHub's source zip ships only the addon.
+
 ### Changed
 
 - Godot 4.8 beta 2 is covered as a preview, beside 4.7.2. CI runs the GDScript

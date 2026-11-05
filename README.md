@@ -86,8 +86,9 @@ as supported:
 
 1. Download `godot-device-power-<version>.zip` from the
    [releases page](https://github.com/KevinTCoughlin/godot-device-power/releases)
-   and verify it against the published `.sha256` file. Until an archive is
-   published, use the source build below.
+   and verify it against the published `.sha256` file. Releases also carry
+   `godot-device-power-<version>-asset-store.zip`, the same addon rooted at
+   `addons/` as published on the Godot Asset Store.
 2. Extract its `addons/device_power` directory into your project's `addons/`.
    It contains the debug and release AARs in `bin/`.
 3. Enable **Device Power** in *Project → Project Settings → Plugins*. The

@@ -89,6 +89,22 @@ jobs:
           (cd dist && sha256sum "${name}.zip" > "${name}.zip.sha256")
           unzip -l "dist/${name}.zip"
 
+          # Godot Asset Store archive: rooted at addons/, with the readme and
+          # changelog inside the plugin folder beside its LICENSE (users keep
+          # that folder, not the repository root), and no hidden files.
+          store="dist/store"
+          mkdir -p "${store}/addons"
+          cp -r addons/device_power "${store}/addons/"
+          cp README.md CHANGELOG.md "${store}/addons/device_power/"
+          find "${store}" -mindepth 1 -name '.*' -prune -exec rm -rf {} +
+          test -f "${store}/addons/device_power/LICENSE"
+          test -f "${store}/addons/device_power/README.md"
+          test -f "${store}/addons/device_power/bin/debug/device_power-debug.aar"
+          test -f "${store}/addons/device_power/bin/release/device_power-release.aar"
+          (cd "${store}" && zip -q -r "../${name}-asset-store.zip" addons)
+          (cd dist && sha256sum "${name}-asset-store.zip" > "${name}-asset-store.zip.sha256")
+          unzip -l "dist/${name}-asset-store.zip"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: godot-device-power
