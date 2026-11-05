@@ -8,6 +8,8 @@ Before 1.0 the public API may change in a minor release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-04
+
 ### Added
 
 - A `godot-device-power-<version>-asset-store.zip` release archive for the
@@ -88,5 +90,6 @@ on a charger, 60/90/90 on battery, 60/45/45 at Moderate heat, 30 at Severe;
 live charger and heat changes reach the cap within about half a second, and
 the frame rate vote survives the app going to the background.
 
-[Unreleased]: https://github.com/KevinTCoughlin/godot-device-power/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/KevinTCoughlin/godot-device-power/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/KevinTCoughlin/godot-device-power/releases/tag/v0.1.1
 [0.1.0]: https://github.com/KevinTCoughlin/godot-device-power/releases/tag/v0.1.0
