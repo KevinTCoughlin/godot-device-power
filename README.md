@@ -1,5 +1,7 @@
 # godot-device-power
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/KevinTCoughlin/godot-device-power/badge)](https://scorecard.dev/viewer/?uri=github.com/KevinTCoughlin/godot-device-power)
+
 A Godot 4 addon that tells a game where its power comes from, whether the
 device is running hot, and what the player asked for in the OS's game mode,
 and turns that into a frame cap and a display refresh request: full refresh
