@@ -90,7 +90,9 @@ as supported:
    [releases page](https://github.com/KevinTCoughlin/godot-device-power/releases)
    and verify it against the published `.sha256` file. Releases also carry
    `godot-device-power-<version>-asset-store.zip`, the same addon rooted at
-   `addons/` as published on the Godot Asset Store.
+   `addons/` as published on the Godot Asset Store. From 0.1.2 both archives
+   also have signed build provenance:
+   `gh attestation verify <zip> --repo KevinTCoughlin/godot-device-power`.
 2. Extract its `addons/device_power` directory into your project's `addons/`.
    It contains the debug and release AARs in `bin/`.
 3. Enable **Device Power** in *Project → Project Settings → Plugins*. The
