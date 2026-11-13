@@ -69,6 +69,13 @@ Checked against the official editor, export templates and `godot-lib` AAR:
 The engine-build Python bump (3.9 to 3.10), the BaseButton touch fix and the
 Compatibility multiply-blend fix do not change this addon.
 
+CI now tracks 4.8 beta 3 (9 November 2026, `4.8.beta3.official.c51ff06e8`)
+in place of beta 2. Beta 3's Android template keeps the same versions (AGP
+8.13.2, Gradle 8.14.5, Kotlin 2.1.21, SDK 36, NDK 29.0.14206865). Its only
+Android changes are a Gradle `fileTree` glob fix, an optional exported-project
+AAR path for development, and an editor-only touchpad scroll fix, none of
+which touch the plugin API above. The size figures above are from beta 2.
+
 These device checks are still open. On an arm64 device, before treating 4.8
 as supported:
 
