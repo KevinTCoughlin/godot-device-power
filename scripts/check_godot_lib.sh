@@ -16,10 +16,10 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-TAG="4.8-beta2"
-AAR_NAME="godot-lib.4.8.beta2.template_release.aar"
-# SHA512-SUMS.txt on the 4.8-beta2 release.
-EXPECTED_SHA512="06ff74be3aec1f4c3f6c9a7bfa19153552efc5cdd8e79372e92b4cb0f0140ffe6ae8b1daf47570892d3361be4fdc6187a7913044c0631b027017ff97947f0646"
+TAG="4.8-beta3"
+AAR_NAME="godot-lib.4.8.beta3.template_release.aar"
+# SHA512-SUMS.txt on the 4.8-beta3 release.
+EXPECTED_SHA512="9dc529a5d605667e0c82d176f7591307871212155f0336d4835041a0f00d8978284ca8d4eca6685f89fae350f0ca209d74ba399f4f10a75202f41cc4599fa819"
 BASE="https://github.com/godotengine/godot-builds/releases/download/${TAG}"
 
 dest="${REPO_ROOT}/build/godot-lib"
