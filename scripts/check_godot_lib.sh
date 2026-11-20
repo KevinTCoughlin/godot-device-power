@@ -4,22 +4,22 @@
 # SPDX-License-Identifier: MIT
 #
 # Compiles the Android plugin against the godot-lib AAR shipped with Godot
-# 4.8 beta 2. That AAR is on the engine's GitHub release, not Maven Central
+# 4.8 beta 4. That AAR is on the engine's GitHub release, not Maven Central
 # (newest there is 4.7.2.stable). The default build pin stays 4.7.2.stable;
 # this does not change what a release archive ships.
 #
 # The download is checked against the SHA-512 pinned below, which is the
-# digest in that release's SHA512-SUMS.txt (published 2026-10-29). The sums
+# digest in that release's SHA512-SUMS.txt (published 2026-11-18). The sums
 # file is downloaded too, and the pin has to match it.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-TAG="4.8-beta3"
-AAR_NAME="godot-lib.4.8.beta3.template_release.aar"
-# SHA512-SUMS.txt on the 4.8-beta3 release.
-EXPECTED_SHA512="9dc529a5d605667e0c82d176f7591307871212155f0336d4835041a0f00d8978284ca8d4eca6685f89fae350f0ca209d74ba399f4f10a75202f41cc4599fa819"
+TAG="4.8-beta4"
+AAR_NAME="godot-lib.4.8.beta4.template_release.aar"
+# SHA512-SUMS.txt on the 4.8-beta4 release.
+EXPECTED_SHA512="88ece7c7ff07d1ed4aa93c9b9a4e6fd97e61ec1771802029d34fc4bd7a4dcd4b5e593964d86da0cc948891ea964e76353b2ecacce7bb0928ad47bab4afb870cf"
 BASE="https://github.com/godotengine/godot-builds/releases/download/${TAG}"
 
 dest="${REPO_ROOT}/build/godot-lib"
