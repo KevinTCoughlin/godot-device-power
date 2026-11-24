@@ -10,7 +10,8 @@ extends Node
 ## [code]device_power[/code] plugin. It reads a backend chosen at startup
 ## ([DevicePowerAndroidPluginBackend] when the Android plugin is in the
 ## export, [DevicePowerAndroidBackend] on Android without it,
-## [DevicePowerNullBackend] elsewhere, or one injected by tests) and emits
+## [DevicePowerNativeBackend] on Windows when the GDExtension is loaded,
+## [DevicePowerNullBackend] otherwise, or one injected by tests) and emits
 ## [signal changed] when anything it reports changes.
 ##
 ## [codeblock]
@@ -259,10 +260,12 @@ func recommended_fps_cap(refresh_rate: float) -> int:
 
 ## The backend for a platform: [param os_name] as [method OS.get_name]
 ## reports it, and [param get_singleton] a [Callable] taking a singleton
-## name and returning the [Object] or [code]null[/code].
+## name and returning the [Object] or [code]null[/code]. Android uses the
+## plugin, then the [JavaClassWrapper] fallback. Windows, macOS and iOS use
+## the GDExtension when that binary can read the platform.
 static func select_backend(os_name: String, get_singleton: Callable) -> DevicePowerBackend:
 	if os_name != "Android":
-		return DevicePowerNullBackend.new()
+		return _backend_without_android(os_name)
 	var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
 	if plugin is Object and plugin != null:
 		var backend := DevicePowerAndroidPluginBackend.new(plugin)
@@ -277,6 +280,17 @@ static func select_backend(os_name: String, get_singleton: Callable) -> DevicePo
 	var runtime: Variant = get_singleton.call("AndroidRuntime")
 	if runtime is Object and runtime != null:
 		return DevicePowerAndroidBackend.new(runtime)
+	return DevicePowerNullBackend.new()
+
+
+## Windows, macOS and iOS use the GDExtension when this binary can read the
+## platform. A missing library, or one built for another OS, leaves the null
+## backend in place.
+static func _backend_without_android(os_name: String) -> DevicePowerBackend:
+	if os_name == "Windows" or os_name == "macOS" or os_name == "iOS":
+		var native := DevicePowerNativeBackend.from_runtime()
+		if native != null:
+			return native
 	return DevicePowerNullBackend.new()
 
 

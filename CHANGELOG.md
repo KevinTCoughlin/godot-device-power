@@ -13,6 +13,14 @@ Before 1.0 the public API may change in a minor release.
 - Releases carry signed SLSA build provenance for every archive (a
   `.sigstore.json` bundle; check with `gh attestation verify`).
 - CodeQL scans the workflows and the Kotlin plugin on every pull request.
+- Windows power source and battery saver from `GetSystemPowerStatus`, via an
+  optional GDExtension (`DevicePowerNative`). The library is single precision,
+  matching the official Godot 4.7 editor. If it is missing, or `is_supported`
+  is false, Windows stays on the null backend. macOS (IOKit and Low Power
+  Mode) and iOS (`UIDevice`, Low Power Mode) are scaffolded in
+  `native/src/apple_power.mm` and are not compiled; Apple thermal states are
+  not mapped onto Android's thermal enum. CI builds the Linux and Windows
+  libraries and loads the Linux one in Godot.
 
 ### Changed
 
