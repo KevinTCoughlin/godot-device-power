@@ -117,6 +117,30 @@ jobs:
       - name: Build against the 4.8-beta5 godot-lib AAR
         run: ./scripts/check_godot_lib.sh
 
+  native:
+    name: Native power backend (mapping test, Linux load, Windows cross-compile)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: chickensoft-games/setup-godot@ac93246ea68518a384c1c280a496e5989341f2f6 # v2.4.3
+        with:
+          version: "4.7.2"
+          use-dotnet: false
+          include-templates: false
+      - name: C++ toolchain and MinGW
+        run: sudo apt-get update && sudo apt-get install -y g++ scons g++-mingw-w64-x86-64
+      - name: Build the extension and run the mapping test
+        run: ./scripts/build_native.sh
+      - name: Load the Linux build in Godot
+        run: ./scripts/smoke_native.sh
+      - name: GDScript suite with the extension installed
+        run: ./scripts/run_tests.sh
+      - name: Editor load with the extension installed
+        run: ./scripts/check.sh editor
+
   lint:
     name: Lint (gdformat, gdlint, shellcheck)
     runs-on: ubuntu-24.04

@@ -15,8 +15,11 @@ On Linux, including Steam Deck, it reads `/sys/class/power_supply`: Godot 4
 has no power API (`OS.get_power_state()` was removed before 4.0). That
 answers battery versus plugged-in only. Battery saver, game mode and thermal
 status stay unknown there, and there is no portable way to ask the compositor
-for a refresh rate, so the vote is not made. Windows, macOS, iOS and the web
-report "unknown", which imposes nothing.
+for a refresh rate, so the vote is not made. On Windows, a GDExtension reads
+`GetSystemPowerStatus`, including battery saver, when that library is present.
+If it is missing or declines, the result is unknown, which imposes nothing.
+macOS and iOS have an unbuilt scaffold for the same extension and stay
+unknown, as does the web.
 
 - Repository: <https://github.com/KevinTCoughlin/godot-device-power>
 - License: MIT (see [`LICENSE`](LICENSE))
@@ -183,7 +186,7 @@ on top (the tighter of the two wins). The display vote follows whatever
 | `get_refresh_rates()`, `get_peak_refresh_rate()` | What the panel can run at its current resolution. |
 | `recommended_fps_cap(refresh_rate) -> int` | The policy below for the current state, paced to the panel. `0` is no cap. |
 | `refresh()` | Read the backend now. |
-| `get_backend_name()` | `android_plugin`, `android`, `linux`, `null` or `mock`. |
+| `get_backend_name()` | `android_plugin`, `android`, `linux`, `windows`, `macos`, `ios`, `native`, `null` or `mock`. |
 | `set_backend(backend)` | Inject a backend (tests use `DevicePowerMockBackend`). |
 | `fps_cap()`, `thermal_limit()`, `paced_cap()`, `paced_cap_down()`, `paced_fps_cap()`, `thermal_back_off()`, `frame_rate_vote()`, `select_backend()` | The pure, static policy, usable with your own state. |
 
@@ -350,14 +353,16 @@ all read the same way.
 | Android, Gradle plugin | read | read | API 31+ | API 29+ | modes at the current resolution | `Surface.setFrameRate`, API 31+ |
 | Android, no plugin | read, polled | read, polled | API 31+, on focus | API 29+, polled | same, polled | same |
 | Linux, including Steam Deck | sysfs, polled | unknown | unknown | unknown | current rate only | not made |
-| Windows, macOS, iOS, web | unknown | unknown | unknown | unknown | not read | not made |
+| Windows, extension loaded | `GetSystemPowerStatus`, polled | read | unknown | unknown | current rate only | not made |
+| macOS, iOS | unknown until the Apple scaffold is built | unknown | unknown | unknown | not read | not made |
+| Web, or Windows without the extension | unknown | unknown | unknown | unknown | not read | not made |
 
 On Android, a failed read or an older API level is unknown for that one
 value. The rest still work. If the plugin is missing or speaks another API,
 the addon uses the `JavaClassWrapper` backend, then the null backend. Linux
 with no `power_supply` class (a desktop, or a sandbox that hides sysfs) is
-unknown and stays uncapped. Windows, macOS and iOS stay on the null backend:
-Godot 4 has no power API there, and GDScript has no portable call to add.
+unknown and stays uncapped. Windows without the GDExtension, macOS, iOS and
+the web stay on the null backend and impose no cap.
 
 ## Backends
 
@@ -366,13 +371,15 @@ Godot 4 has no power API there, and GDScript has no portable call to add.
 | `DevicePowerAndroidPluginBackend` | Android, plugin in the export | The `DevicePowerAndroid` singleton's signals; getters are cached reads. |
 | `DevicePowerAndroidBackend` | Android, no plugin | `JavaClassWrapper`, polled every `poll_interval`; game mode on resume and focus. |
 | `DevicePowerLinuxBackend` | Linux, including Steam Deck | sysfs `power_supply`, polled; current refresh rate only. No saver, game mode, thermal status or frame-rate vote. |
-| `DevicePowerNullBackend` | Windows, macOS, iOS, web | Everything unknown; the policy imposes nothing. |
+| `DevicePowerNativeBackend` | Windows, when the GDExtension loaded and `is_supported` is true | `GetSystemPowerStatus`, including battery saver. macOS and iOS stay unsupported until their scaffold is built. |
+| `DevicePowerNullBackend` | the web, and Windows, macOS or iOS when the extension is missing | Everything unknown; the policy imposes nothing. |
 | `DevicePowerMockBackend` | tests | Fields you set. |
 
 `release()` is part of the backend contract. The facade calls it before it
 drops a backend, on shutdown and when a backend is replaced. A backend that
 subscribed to anything overrides it. The Android plugin backend disconnects
-the engine singleton there, so a reload does not call into a freed object.
+the engine singleton there, and the native backend drops the GDExtension
+object, so a reload does not call into a freed object.
 
 The plugin (`android-plugin/`, Kotlin, Godot Android plugin v2) registers a
 broadcast receiver for `ACTION_BATTERY_CHANGED` and
@@ -386,6 +393,30 @@ level to "unknown".
 
 The plugin's singleton is `DevicePowerAndroid`, not `DevicePower`, so it does
 not collide with the autoload.
+
+### Windows, macOS and iOS
+
+`native/` is a GDExtension, `DevicePowerNative`, built against godot-cpp with
+`api_version=4.7` and single precision (what the official 4.7.2 editor
+reports). `scripts/build_native.sh` compiles it and installs the libraries
+under `addons/device_power/bin/native/`, which is not committed.
+
+On Windows the read is `GetSystemPowerStatus`. AC online is external power
+even when the battery is not charging. AC offline is battery. An unknown AC
+line with the no-battery flag is external (a desktop). Battery saver is bit 0
+of `SystemStatusFlag`. The current refresh rate comes from `DisplayServer`;
+other modes are not visible, and there is no frame-rate vote.
+
+The Linux build of the same library loads and returns `is_supported() == false`,
+so a Linux machine that has the file installed does not start capping. macOS
+and iOS are `native/src/apple_power.mm`. That file is not compiled here, and
+support stays off, because Godot 4.7 logs an error when a `.gdextension` has
+no library for the running OS: shipping an entry without a real binary would
+be worse than staying on the null backend. Apple's thermal states are not
+mapped onto Android's `ThermalStatus`.
+
+`./scripts/build_native.sh` needs a C++ compiler, scons, and
+`x86_64-w64-mingw32-g++`. It clones godot-cpp (or uses `GODOT_CPP`).
 
 ### Release exports
 

@@ -14,12 +14,17 @@ func _lookup(singletons: Dictionary) -> Callable:
 	return func(singleton_name: String) -> Object: return singletons.get(singleton_name)
 
 
-func test_linux_reads_sysfs_and_other_desktops_get_the_null_backend() -> void:
+func test_linux_reads_sysfs_and_unbridged_platforms_stay_null() -> void:
 	var linux: DevicePowerBackend = Facade.select_backend("Linux", _lookup({}))
 	assert_eq(linux.get_backend_name(), "linux")
-	for os_name: String in ["Windows", "macOS", "iOS", "Web", "FreeBSD"]:
+	for os_name: String in ["Web", "FreeBSD"]:
 		var backend: DevicePowerBackend = Facade.select_backend(os_name, _lookup({}))
 		assert_eq(backend.get_backend_name(), "null", os_name)
+	# Windows, macOS and iOS use the GDExtension only when this process can
+	# read them. The Linux binary reports unsupported, so they stay null here.
+	for os_name: String in ["Windows", "macOS", "iOS"]:
+		var desktop: DevicePowerBackend = Facade.select_backend(os_name, _lookup({}))
+		assert_eq(desktop.get_backend_name(), "null", os_name)
 
 
 func test_android_prefers_the_plugin() -> void:

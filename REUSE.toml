@@ -21,6 +21,7 @@ path = [
     ".gitignore",
     ".gitattributes",
     "android-plugin/.gdignore",
+    "native/.gdignore",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Kevin Coughlin"

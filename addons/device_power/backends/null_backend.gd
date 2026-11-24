@@ -4,10 +4,12 @@
 class_name DevicePowerNullBackend
 extends DevicePowerBackend
 
-## Backend for platforms without a power bridge: Windows, macOS, iOS and the
-## web. Godot 4 has no power API on those, and there is no portable file or
-## call this addon can make. Everything is unknown, which the frame-cap
-## policy treats as "impose nothing". Linux is [DevicePowerLinuxBackend].
+## Backend for every platform without a power bridge that is actually
+## available. Linux is [DevicePowerLinuxBackend]. Windows, macOS and iOS use
+## [DevicePowerNativeBackend] when the GDExtension is loaded and reports
+## support; otherwise they land here, and so does the web and anything else
+## with no read. Everything is unknown, which the frame-cap policy treats as
+## "impose nothing".
 ##
 ## Every read is the contract's default, so nothing is overridden but the name.
 

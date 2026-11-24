@@ -21,17 +21,27 @@ Before 1.0 the public API may change in a minor release.
   the battery's status, so a charge limit stays external power. Battery
   saver, game mode and thermal status stay unknown, and the frame-rate vote
   is not made. Only the current refresh rate is known, and caps are paced as
-  if the panel were fixed at that rate. Windows, macOS, iOS and the web stay
-  on the null backend: Godot 4 has no power API there.
+  if the panel were fixed at that rate. The web stays on the null backend.
+  Windows, macOS and iOS use the GDExtension when it is loaded and otherwise
+  stay on the null backend.
 - Releases carry signed SLSA build provenance for every archive (a
   `.sigstore.json` bundle; check with `gh attestation verify`).
 - CodeQL scans the workflows and the Kotlin plugin on every pull request.
+- Windows power source and battery saver from `GetSystemPowerStatus`, via an
+  optional GDExtension (`DevicePowerNative`). The library is single precision,
+  matching the official Godot 4.7 editor. If it is missing, or `is_supported`
+  is false, Windows stays on the null backend. macOS (IOKit and Low Power
+  Mode) and iOS (`UIDevice`, Low Power Mode) are scaffolded in
+  `native/src/apple_power.mm` and are not compiled; Apple thermal states are
+  not mapped onto Android's thermal enum. CI builds the Linux and Windows
+  libraries and loads the Linux one in Godot.
 
 ### Fixed
 
 - Shutting down or freeing `DevicePower` releases the backend first. The
   Android plugin backend disconnects the engine singleton's signals in
-  `release()`, so a reload does not call into a freed object.
+  `release()`, and the native backend drops the GDExtension object, so a
+  reload does not call into a freed object.
 - `select_backend()` treats a missing Android singleton lookup as the null
   backend. An unknown OS name was already the null backend.
 - The display vote is sent after `changed`. A handler that applies
@@ -47,8 +57,10 @@ Before 1.0 the public API may change in a minor release.
 
 ### Changed
 
-- The README has a platform support matrix. Unknown is a normal result on
-  every target the addon does not read, not an error.
+- The README platform matrix covers Android, Linux, the Windows GDExtension,
+  and the platforms that stay unknown (macOS and iOS until their scaffold is
+  built, the web, and Windows when the extension is missing). Unknown is a
+  normal result, not an error.
 - The non-blocking Godot 4.8 preview in CI (headless suite and the
   `godot-lib` AAR compile check) now runs against 4.8-beta5 (commit
   `a661dfdbc`) instead of 4.8-beta4.
