@@ -123,6 +123,26 @@ object RefreshRates {
     }
 }
 
+/**
+ * What a [android.hardware.display.DisplayManager.DisplayListener] callback
+ * means for the snapshot. Kept free of Android types so the JVM tests can
+ * run it. A callback for some other display is ignored, and a failed read
+ * leaves the previous list in place: brightness changes and transient
+ * failures must not wipe a rate the cap is using.
+ */
+object DisplayEvents {
+    fun ratesAfterEvent(
+        eventDisplayId: Int,
+        ourDisplayId: Int?,
+        readRates: () -> FloatArray?,
+    ): List<Float>? {
+        if (ourDisplayId == null || eventDisplayId != ourDisplayId) {
+            return null
+        }
+        return readRates()?.toList()
+    }
+}
+
 object FrameRateVote {
     /** Above any panel's rate; a larger request is a bug in the caller. */
     const val MAX_RATE = 1000f

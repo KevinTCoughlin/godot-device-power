@@ -55,6 +55,14 @@ Before 1.0 the public API may change in a minor release.
   deliver `surfaceCreated` in that case, so a vote that raced surface
   creation could sit unused until the next resume or the 30 s safety poll.
 
+### Fixed
+
+- The Android plugin registers a `DisplayManager.DisplayListener` while the
+  app is resumed. A refresh-rate change on the display the game is using
+  updates the rate list immediately, instead of waiting for the next signal
+  or the 30 s safety poll. Callbacks for other displays are ignored, and a
+  failed read keeps the previous list.
+
 ### Changed
 
 - The README platform matrix covers Android, Linux, the Windows GDExtension,

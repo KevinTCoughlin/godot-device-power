@@ -151,6 +151,42 @@ class RefreshRatesTest {
         assertEquals(0, RefreshRates.atResolution(null, listOf(mode(1, 1, 60f))).size)
 }
 
+class DisplayEventsTest {
+    @Test
+    fun aCallbackForAnotherDisplayIsIgnored() {
+        var reads = 0
+        val result = DisplayEvents.ratesAfterEvent(2, 1) {
+            reads += 1
+            floatArrayOf(60f)
+        }
+        assertNull(result)
+        assertEquals(0, reads)
+    }
+
+    @Test
+    fun unknownDisplayIsIgnored() {
+        assertNull(DisplayEvents.ratesAfterEvent(1, null) { floatArrayOf(60f) })
+    }
+
+    @Test
+    fun ourDisplayPublishesTheReadList() {
+        assertEquals(
+            listOf(60f, 120f),
+            DisplayEvents.ratesAfterEvent(7, 7) { floatArrayOf(60f, 120f) },
+        )
+    }
+
+    @Test
+    fun aFailedReadLeavesThePreviousListAlone() {
+        assertNull(DisplayEvents.ratesAfterEvent(3, 3) { null })
+    }
+
+    @Test
+    fun anEmptyReadIsARealUpdate() {
+        assertEquals(emptyList<Float>(), DisplayEvents.ratesAfterEvent(3, 3) { FloatArray(0) })
+    }
+}
+
 class FrameRateVoteTest {
     @Test
     fun acceptsRatesAndWithdrawal() {

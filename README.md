@@ -290,7 +290,10 @@ Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab
   `adb shell dumpsys battery unplug` / `dumpsys battery reset`, so the battery
   path can be tested on a device that has to stay on USB.
 - **Refresh rates** are the modes at the current resolution plus each mode's
-  alternative refresh rates (Android 12+). Only what apps are told counts: a
+  alternative refresh rates (Android 12+). A `DisplayManager.DisplayListener`
+  registered while the app is resumed re-reads them when that display changes,
+  so a refresh-rate switch reaches the cap without waiting for the 30 s
+  safety poll. Only what apps are told counts: a
   Galaxy A16's `dumpsys display` lists 60 as an alternative of its single
   90 Hz mode, but `Display.Mode.getAlternativeRefreshRates()` and
   `Display.getSupportedRefreshRates()` both give `[90]`. It is treated as fixed
@@ -383,13 +386,13 @@ object, so a reload does not call into a freed object.
 
 The plugin (`android-plugin/`, Kotlin, Godot Android plugin v2) registers a
 broadcast receiver for `ACTION_BATTERY_CHANGED` and
-`ACTION_POWER_SAVE_MODE_CHANGED` and a thermal status listener while the app is
-resumed, re-reads the game mode on resume and when the facade regains focus,
-and emits `power_changed`, `game_mode_changed`, `thermal_status_changed` and
-`refresh_rates_changed`. Registration and platform reads run on the main
-thread; Godot's calls arrive on its render thread and only read a published
-snapshot, so a game never waits on a system call. Everything degrades by API
-level to "unknown".
+`ACTION_POWER_SAVE_MODE_CHANGED`, a thermal status listener, and a
+`DisplayManager.DisplayListener` while the app is resumed, re-reads the game
+mode on resume and when the facade regains focus, and emits `power_changed`,
+`game_mode_changed`, `thermal_status_changed` and `refresh_rates_changed`.
+Registration and platform reads run on the main thread; Godot's calls arrive
+on its render thread and only read a published snapshot, so a game never
+waits on a system call. Everything degrades by API level to "unknown".
 
 The plugin's singleton is `DevicePowerAndroid`, not `DevicePower`, so it does
 not collide with the autoload.

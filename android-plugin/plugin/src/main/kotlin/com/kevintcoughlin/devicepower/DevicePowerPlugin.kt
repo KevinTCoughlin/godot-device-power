@@ -10,6 +10,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.display.DisplayManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
@@ -32,8 +33,8 @@ import org.godotengine.godot.plugin.UsedByGodot
  *
  * Threads. Three are involved, and each member says which it runs on:
  * - the main (UI) thread: lifecycle callbacks, the broadcast receiver, the
- *   thermal listener and the SurfaceHolder callback. All registration and
- *   every platform read happen here.
+ *   thermal listener, the display listener and the SurfaceHolder callback.
+ *   All registration and every platform read happen here.
  * - Godot's thread (the render thread): every @UsedByGodot method. Getters
  *   only read [snapshot], a @Volatile immutable value, so a game never waits
  *   on a binder call. [voteFrameRate] calls Surface.setFrameRate() directly,
@@ -58,6 +59,9 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @Volatile
     private var surfaceHolder: SurfaceHolder? = null
+
+    /** Main thread. [DisplayManager.DisplayListener], registered while resumed. */
+    private var displayListener: DisplayManager.DisplayListener? = null
 
     private val voteLock = Any()
 
@@ -227,6 +231,7 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
                 }
             }
         }
+        registerDisplayListener()
         attachSurfaceCallback()
         update(read(stickyBattery = null))
         reapplyVote()
@@ -250,6 +255,7 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
             }
         }
         thermalListener = null
+        unregisterDisplayListener()
     }
 
     /** Publishes [next] and emits a signal for each part that changed. */
@@ -308,6 +314,54 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
         )
         return RefreshRates.atResolution(spec(display.mode), display.supportedModes.map(::spec))
     }
+
+    /**
+     * Re-reads refresh rates when the display we are actually on changes
+     * mode. Registered on [mainHandler], so this runs on the main thread.
+     * [DisplayEvents.ratesAfterEvent] drops callbacks for other displays and
+     * failed reads; [update] then emits only when the list changed, which is
+     * how a refresh-rate switch reaches the cap without waiting for the
+     * safety poll.
+     */
+    private fun onDisplayEvent(displayId: Int) {
+        val next = DisplayEvents.ratesAfterEvent(displayId, display()?.displayId) {
+            guarded("refresh rates") { readRefreshRates() }
+        } ?: return
+        update(snapshot.copy(refreshRates = next))
+    }
+
+    private fun registerDisplayListener() {
+        if (displayListener != null) {
+            return
+        }
+        val manager = displayManager() ?: return
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = onDisplayEvent(displayId)
+            override fun onDisplayRemoved(displayId: Int) = onDisplayEvent(displayId)
+            override fun onDisplayChanged(displayId: Int) = onDisplayEvent(displayId)
+        }
+        try {
+            // API 17, below minSdk. The handler is the main looper, so the
+            // callback stays on the thread that owns the snapshot.
+            manager.registerDisplayListener(listener, mainHandler)
+            displayListener = listener
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not register the display listener", e)
+        }
+    }
+
+    private fun unregisterDisplayListener() {
+        val listener = displayListener ?: return
+        try {
+            displayManager()?.unregisterDisplayListener(listener)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not remove the display listener", e)
+        }
+        displayListener = null
+    }
+
+    private fun displayManager(): DisplayManager? =
+        guarded("display manager") { activityContext().getSystemService(DisplayManager::class.java) }
 
     private fun display(): Display? {
         val activity = activity ?: return null
