@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Kevin Coughlin
+#
+# SPDX-License-Identifier: MIT
+
+import os
+
+cpp = os.environ.get("GODOT_CPP", os.path.join(Dir(".").abspath, ".godot-cpp"))
+
+env = SConscript(
+    os.path.join(cpp, "SConstruct"),
+    {"api_version": "4.7"},
+)
+
+sources = [
+    "src/register_types.cpp",
+    "src/device_power_native.cpp",
+    "src/power_status.cpp",
+    "src/platform_power.cpp",
+]
+
+# apple_power.mm is the macOS/iOS scaffold. It is not compiled here: CI is
+# Linux, and platform_power_is_supported() is false on Apple until a binary
+# built from that file has been loaded in Godot.
+
+env.Append(CPPPATH=["src"])
+library_name = "bin/libdevice_power" + env["suffix"] + env["SHLIBSUFFIX"]
+library = env.SharedLibrary(library_name, source=sources)
+Default(library)
