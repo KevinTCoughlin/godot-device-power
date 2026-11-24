@@ -14,6 +14,14 @@ Before 1.0 the public API may change in a minor release.
   `.sigstore.json` bundle; check with `gh attestation verify`).
 - CodeQL scans the workflows and the Kotlin plugin on every pull request.
 
+### Fixed
+
+- The Android plugin registers a `DisplayManager.DisplayListener` while the
+  app is resumed. A refresh-rate change on the display the game is using
+  updates the rate list immediately, instead of waiting for the next signal
+  or the 30 s safety poll. Callbacks for other displays are ignored, and a
+  failed read keeps the previous list.
+
 ### Changed
 
 - The non-blocking Godot 4.8 preview in CI (headless suite and the
