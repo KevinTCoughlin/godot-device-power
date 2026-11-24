@@ -66,6 +66,16 @@ func test_an_incompatible_plugin_falls_back_to_the_runtime() -> void:
 	plugin.free()
 
 
+func test_an_unknown_os_or_a_missing_lookup_stays_unknown() -> void:
+	for os_name: String in ["", "Steam", "UWP"]:
+		var backend: DevicePowerBackend = Facade.select_backend(os_name, _lookup({}))
+		assert_eq(backend.get_backend_name(), "null", os_name)
+		assert_eq(backend.get_power_source(), -1, os_name)
+		assert_null(backend.is_power_saver_enabled(), os_name)
+	var blind: DevicePowerBackend = Facade.select_backend("Android", Callable())
+	assert_eq(blind.get_backend_name(), "null", "Android with no lookup")
+
+
 func test_a_non_object_singleton_is_ignored() -> void:
 	var backend: DevicePowerBackend = Facade.select_backend(
 		"Android", func(singleton_name: String) -> Variant: return 1 if singleton_name else null

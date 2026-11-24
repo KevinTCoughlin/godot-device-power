@@ -160,7 +160,9 @@ static func _read_value(path: String) -> String:
 		if file.eof_reached():
 			break
 		bytes.append(next)
-	return bytes.get_string_from_utf8().strip_edges()
+	var text := bytes.get_string_from_utf8().strip_edges()
+	file.close()
+	return text
 
 
 static func _field(supply: Dictionary, key: String) -> String:

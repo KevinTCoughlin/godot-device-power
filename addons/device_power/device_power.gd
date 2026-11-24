@@ -163,6 +163,11 @@ func _process(delta: float) -> void:
 
 
 func _notification(what: int) -> void:
+	# PREDELETE runs on free(), including a node that was never in the tree.
+	# Leaving the tree without being freed (a reparent) keeps the backend.
+	if what == NOTIFICATION_PREDELETE:
+		_detach_backend()
+		return
 	if what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		if not _backend:
 			return
@@ -182,8 +187,7 @@ func set_backend(backend: DevicePowerBackend) -> void:
 		backend != null,
 		"DevicePower.set_backend() requires a backend; use DevicePowerNullBackend.new()."
 	)
-	if _backend and _backend.changed.is_connected(_on_backend_changed):
-		_backend.changed.disconnect(_on_backend_changed)
+	_detach_backend()
 	_backend = backend
 	_backend.changed.connect(_on_backend_changed)
 	_back_off = ThermalBackOff.NONE
@@ -198,6 +202,19 @@ func set_backend(backend: DevicePowerBackend) -> void:
 
 func get_backend_name() -> String:
 	return _backend.get_backend_name() if _backend else "none"
+
+
+## Drops the current backend. The Android plugin singleton outlives this
+## node; freeing the backend here disconnects that singleton's signals
+## instead of leaving them aimed at a freed object.
+func _detach_backend() -> void:
+	if _backend == null:
+		return
+	if _backend.changed.is_connected(_on_backend_changed):
+		_backend.changed.disconnect(_on_backend_changed)
+	# While the backend is still referenced, so its script can run.
+	_backend.release()
+	_backend = null
 
 
 ## Reads the backend now; emits [signal changed] if anything differs.
@@ -267,12 +284,15 @@ func recommended_fps_cap(refresh_rate: float) -> int:
 ## plugin, then the [JavaClassWrapper] fallback. Linux reads sysfs. Every
 ## other name gets [DevicePowerNullBackend]: Godot 4 has no power API there.
 static func select_backend(os_name: String, get_singleton: Callable) -> DevicePowerBackend:
-	if os_name == "Android":
+	# A missing lookup is unknown, not a script error. Windows, macOS, iOS,
+	# the web and any other name fall through to the null backend below.
+	if os_name == "Android" and get_singleton.is_valid():
 		var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
 		if plugin is Object and plugin != null:
 			var backend := DevicePowerAndroidPluginBackend.new(plugin)
 			if backend.is_compatible():
 				return backend
+			backend.release()
 			push_warning(
 				(
 					"DevicePower: the %s plugin speaks another API; falling back."

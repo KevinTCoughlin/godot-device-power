@@ -18,6 +18,11 @@ extends DevicePowerBackend
 ## [code]null[/code] passed on into a typed native method can crash. So each
 ## answer is type-checked and range-checked here, and anything unexpected
 ## reads as "unknown".
+##
+## The engine singleton outlives this object. [method release] disconnects
+## its signals. [DevicePower] calls that before it drops the backend, so
+## disabling the plugin or reloading the autoload does not leave a call
+## into a dead object.
 
 ## The singleton's name, from the plugin's manifest entry.
 const SINGLETON_NAME := "DevicePowerAndroid"
@@ -33,6 +38,9 @@ const _SIGNALS := {
 }
 
 var _plugin: Object
+## Callables actually connected, so they can be disconnected. An
+## [code]unbind[/code]ed callable is not the method itself.
+var _plugin_hooks: Array[Dictionary] = []
 
 
 func _init(plugin: Object) -> void:
@@ -42,9 +50,25 @@ func _init(plugin: Object) -> void:
 	for signal_name: StringName in _SIGNALS:
 		if _plugin.has_signal(signal_name):
 			var arity: int = _SIGNALS[signal_name]
-			_plugin.connect(
-				signal_name, _on_plugin_signal.unbind(arity) if arity > 0 else _on_plugin_signal
-			)
+			var hook := _on_plugin_signal.unbind(arity) if arity > 0 else _on_plugin_signal
+			_plugin.connect(signal_name, hook)
+			_plugin_hooks.append({"signal_name": signal_name, "hook": hook})
+
+
+## Drops every signal this backend connected. Safe to call twice, and when
+## the plugin is already gone.
+func release() -> void:
+	if not is_instance_valid(_plugin):
+		_plugin = null
+		_plugin_hooks.clear()
+		return
+	for entry: Dictionary in _plugin_hooks:
+		var signal_name: StringName = entry["signal_name"]
+		var hook: Callable = entry["hook"]
+		if _plugin.is_connected(signal_name, hook):
+			_plugin.disconnect(signal_name, hook)
+	_plugin_hooks.clear()
+	_plugin = null
 
 
 ## Whether [param plugin] is a plugin this backend can use: present, and

@@ -23,6 +23,11 @@ Before 1.0 the public API may change in a minor release.
 
 ### Fixed
 
+- Shutting down or freeing `DevicePower` disconnects the backend. The
+  Android plugin backend also disconnects the engine singleton's signals
+  when it is freed, so a reload does not call into a freed object.
+- `select_backend()` treats a missing Android singleton lookup as the null
+  backend. An unknown OS name was already the null backend.
 - The display vote is sent after `changed`. A handler that applies
   `recommended_fps_cap()` to `Engine.max_fps` is what gets voted on that
   update, including resume, instead of the previous cap.

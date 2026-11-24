@@ -40,6 +40,14 @@ func request_update() -> void:
 	pass
 
 
+## Drops anything this backend subscribed to. [DevicePower] calls this before
+## it lets go of the backend (a replacement, or the node being freed). The
+## default has nothing to drop. Do the work here, not in a pre-delete
+## notification: by then the script instance may already be gone.
+func release() -> void:
+	pass
+
+
 ## A [code]DevicePower.PowerSource[/code] value.
 func get_power_source() -> int:
 	return -1

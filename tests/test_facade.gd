@@ -264,6 +264,16 @@ func test_a_pushing_backend_is_polled_only_as_a_safety_net() -> void:
 	facade.free()
 
 
+func test_freeing_the_facade_disconnects_the_backend() -> void:
+	var backend := DevicePowerMockBackend.new()
+	var facade := make_facade()
+	facade.set_backend(backend)
+	assert_eq(backend.changed.get_connections().size(), 1, "connected")
+	facade.free()
+	assert_eq(backend.changed.get_connections().size(), 0, "freed facade drops it")
+	backend.changed.emit()
+
+
 func test_replacing_the_backend_disconnects_the_old_one() -> void:
 	var first := DevicePowerMockBackend.new()
 	first.push = true
