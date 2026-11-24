@@ -10,6 +10,12 @@ Before 1.0 the public API may change in a minor release.
 
 ### Added
 
+- CI uploads `godot-device-power-<version>.zip` and the Asset Library zip
+  (`scripts/package.sh`) as a build artifact. That job does not publish a
+  release. The zip entry order and timestamps are pinned so the same commit
+  and toolchain produce the same archives.
+- A square Asset Library icon at `.github/store/icon.png`, also shipped as
+  `addons/device_power/icon.png`.
 - Linux, including Steam Deck, reports its power source from
   `/sys/class/power_supply` (`DevicePowerLinuxBackend`). Plugged in wins over
   the battery's status, so a charge limit stays external power. Battery

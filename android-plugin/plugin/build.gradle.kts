@@ -91,3 +91,10 @@ afterEvaluate {
     copyDebugAar { dependsOn("assembleDebug") }
     copyReleaseAar { dependsOn("assembleRelease") }
 }
+
+// Stable AAR bytes for a given source tree: sorted entries, no timestamps.
+// scripts/package.sh then pins the outer zip the same way.
+tasks.withType<org.gradle.api.tasks.bundling.AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}

@@ -120,6 +120,13 @@ as supported:
    plugin installs the `DevicePower` autoload and registers the export plugin
    that bundles the AAR into Android exports.
 
+CI on pull requests and on `main` builds those same two zips and uploads
+them as the `godot-device-power-package` artifact. That job does not create
+a tag, a release, or an Asset Library entry. The square icon for the library
+form is [`.github/store/icon.png`](.github/store/icon.png) (256×256, also
+shipped as `addons/device_power/icon.png`). The 16:9 preview stays
+[`.github/store/thumbnail.png`](.github/store/thumbnail.png).
+
 ### From source
 
 ```bash
