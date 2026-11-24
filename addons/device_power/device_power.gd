@@ -10,8 +10,10 @@ extends Node
 ## [code]device_power[/code] plugin. It reads a backend chosen at startup
 ## ([DevicePowerAndroidPluginBackend] when the Android plugin is in the
 ## export, [DevicePowerAndroidBackend] on Android without it,
-## [DevicePowerNullBackend] elsewhere, or one injected by tests) and emits
-## [signal changed] when anything it reports changes.
+## [DevicePowerLinuxBackend] on Linux, including Steam Deck,
+## [DevicePowerNullBackend] on Windows, macOS, iOS and the web, or one
+## injected by tests) and emits [signal changed] when anything it reports
+## changes.
 ##
 ## [codeblock]
 ## func _ready() -> void:
@@ -87,10 +89,10 @@ const _BACK_OFF_STATUS: Array[int] = [
 ]
 
 ## Seconds between polls of a polled backend (the [JavaClassWrapper]
-## fallback) while the app is in the foreground. A charger plugged in
-## mid-game is picked up within this long. The game mode is read at start
-## and when the app resumes or regains focus (the Game Dashboard takes focus
-## to change it).
+## fallback and the Linux sysfs backend) while the app is in the foreground.
+## A charger plugged in mid-game is picked up within this long. The game mode
+## is read at start and when the app resumes or regains focus (the Game
+## Dashboard takes focus to change it).
 @export var poll_interval: float = 2.0
 
 ## Seconds between safety reads of a backend that pushes its changes (the
@@ -168,9 +170,9 @@ func _notification(what: int) -> void:
 		_voted = -1.0
 		_backend.request_update()
 		var differs := _read(true)
-		_vote()
 		if differs:
 			changed.emit()
+		_vote()
 
 
 ## Replaces the backend and reads it at once. Tests inject a
@@ -188,8 +190,10 @@ func set_backend(backend: DevicePowerBackend) -> void:
 	_cooling_since = -1.0
 	_voted = -1.0
 	_read(true)
-	_vote()
+	# Emit before the vote, so a handler that applies the cap to
+	# Engine.max_fps is what this update asks the display for.
 	changed.emit()
+	_vote()
 
 
 func get_backend_name() -> String:
@@ -201,9 +205,9 @@ func refresh() -> void:
 	if not _backend:
 		return
 	var differs := _read(false)
-	_vote()
 	if differs:
 		changed.emit()
+	_vote()
 
 
 ## A [enum PowerSource] value, as of the last read.
@@ -259,24 +263,28 @@ func recommended_fps_cap(refresh_rate: float) -> int:
 
 ## The backend for a platform: [param os_name] as [method OS.get_name]
 ## reports it, and [param get_singleton] a [Callable] taking a singleton
-## name and returning the [Object] or [code]null[/code].
+## name and returning the [Object] or [code]null[/code]. Android uses the
+## plugin, then the [JavaClassWrapper] fallback. Linux reads sysfs. Every
+## other name gets [DevicePowerNullBackend]: Godot 4 has no power API there.
 static func select_backend(os_name: String, get_singleton: Callable) -> DevicePowerBackend:
-	if os_name != "Android":
-		return DevicePowerNullBackend.new()
-	var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
-	if plugin is Object and plugin != null:
-		var backend := DevicePowerAndroidPluginBackend.new(plugin)
-		if backend.is_compatible():
-			return backend
-		push_warning(
-			(
-				"DevicePower: the %s plugin speaks another API; falling back."
-				% ANDROID_PLUGIN_SINGLETON
+	if os_name == "Android":
+		var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
+		if plugin is Object and plugin != null:
+			var backend := DevicePowerAndroidPluginBackend.new(plugin)
+			if backend.is_compatible():
+				return backend
+			push_warning(
+				(
+					"DevicePower: the %s plugin speaks another API; falling back."
+					% ANDROID_PLUGIN_SINGLETON
+				)
 			)
-		)
-	var runtime: Variant = get_singleton.call("AndroidRuntime")
-	if runtime is Object and runtime != null:
-		return DevicePowerAndroidBackend.new(runtime)
+		var runtime: Variant = get_singleton.call("AndroidRuntime")
+		if runtime is Object and runtime != null:
+			return DevicePowerAndroidBackend.new(runtime)
+		return DevicePowerNullBackend.new()
+	if os_name == "Linux":
+		return DevicePowerLinuxBackend.new()
 	return DevicePowerNullBackend.new()
 
 
@@ -439,8 +447,12 @@ static func _tighter(cap: int, limit: int) -> int:
 
 ## Reads the backend into the fields. A polled backend's game mode is read
 ## only on [param full] reads: it changes through the Game Dashboard, which
-## takes focus. Comparisons are type-safe on purpose: a release export turns
-## a script error into a silent null, which a typed caller cannot survive.
+## takes focus. Refresh rates are read on every poll: a panel's rate can
+## change while the game stays focused (a Steam Deck refresh toggle, a
+## monitor mode). Rates within half a hertz of the last read are the same
+## list, so float noise does not emit [signal changed]. Comparisons are
+## type-safe on purpose: a release export turns a script error into a silent
+## null, which a typed caller cannot survive.
 func _read(full: bool) -> bool:
 	_since_poll = 0.0
 	var source := _backend.get_power_source()
@@ -468,9 +480,8 @@ func _read(full: bool) -> bool:
 	_thermal_status = thermal
 	if _update_back_off():
 		differs = true
-	if full or _backend.pushes_changes():
-		if _read_refresh_rates():
-			differs = true
+	if _read_refresh_rates():
+		differs = true
 	return differs
 
 
@@ -498,18 +509,39 @@ func _update_back_off() -> bool:
 	return _back_off != before
 
 
-## Reads the refresh rates. Returns whether they changed.
+## Reads the refresh rates. Returns whether they changed. Two lists are the
+## same when each rate has a partner within [constant DevicePowerBackend.SAME_RATE_HZ],
+## whatever the order, which is how display rates jitter (59.94 against 60).
 func _read_refresh_rates() -> bool:
 	var rates := PackedFloat32Array()
 	var peak := 0.0
 	for rate in _backend.get_refresh_rates():
-		if is_finite(rate) and rate > 0.0:
-			rates.append(rate)
+		if is_finite(rate) and rate > 0.0 and DevicePowerBackend.merge_refresh_rate(rates, rate):
 			peak = maxf(peak, rate)
-	if rates == _refresh_rates:
+	if _same_refresh_rates(rates, _refresh_rates):
 		return false
 	_refresh_rates = rates
 	_peak_refresh_rate = peak
+	return true
+
+
+static func _same_refresh_rates(fresh: PackedFloat32Array, previous: PackedFloat32Array) -> bool:
+	if fresh.size() != previous.size():
+		return false
+	var used := PackedByteArray()
+	used.resize(previous.size())
+	for rate in fresh:
+		var found := false
+		for index in previous.size():
+			var same: bool = (
+				used[index] == 0 and absf(rate - previous[index]) < DevicePowerBackend.SAME_RATE_HZ
+			)
+			if same:
+				used[index] = 1
+				found = true
+				break
+		if not found:
+			return false
 	return true
 
 
@@ -519,7 +551,7 @@ func _vote_target() -> float:
 
 
 func _vote() -> void:
-	if not vote_frame_rate or not _backend:
+	if not vote_frame_rate or not _backend or not _backend.can_vote_frame_rate():
 		return
 	var rate := _vote_target()
 	if rate == _voted:
@@ -529,8 +561,8 @@ func _vote() -> void:
 	var ok := _backend.vote_frame_rate(rate)
 	if ok:
 		_voted = rate
-	# Logged once, where there is a platform to vote to.
-	if not _vote_logged and get_backend_name() != "null":
+	# Logged once. Backends that cannot vote never reach here.
+	if not _vote_logged:
 		_vote_logged = true
 		print(
 			(

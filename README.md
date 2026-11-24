@@ -11,7 +11,12 @@ mode respected over the power source.
 On Android it ships a small Kotlin plugin that listens for the platform's own
 change notifications, so nothing is polled. Without the plugin (a non-Gradle
 export) it falls back to reading the same state through `JavaClassWrapper`.
-Everywhere else it reports "unknown", which imposes nothing.
+On Linux, including Steam Deck, it reads `/sys/class/power_supply`: Godot 4
+has no power API (`OS.get_power_state()` was removed before 4.0). That
+answers battery versus plugged-in only. Battery saver, game mode and thermal
+status stay unknown there, and there is no portable way to ask the compositor
+for a refresh rate, so the vote is not made. Windows, macOS, iOS and the web
+report "unknown", which imposes nothing.
 
 - Repository: <https://github.com/KevinTCoughlin/godot-device-power>
 - License: MIT (see [`LICENSE`](LICENSE))
@@ -163,7 +168,7 @@ on top (the tighter of the two wins). The display vote follows whatever
 | `get_refresh_rates()`, `get_peak_refresh_rate()` | What the panel can run at its current resolution. |
 | `recommended_fps_cap(refresh_rate) -> int` | The policy below for the current state, paced to the panel. `0` is no cap. |
 | `refresh()` | Read the backend now. |
-| `get_backend_name()` | `android_plugin`, `android`, `null` or `mock`. |
+| `get_backend_name()` | `android_plugin`, `android`, `linux`, `null` or `mock`. |
 | `set_backend(backend)` | Inject a backend (tests use `DevicePowerMockBackend`). |
 | `fps_cap()`, `thermal_limit()`, `paced_cap()`, `paced_cap_down()`, `paced_fps_cap()`, `thermal_back_off()`, `frame_rate_vote()`, `select_backend()` | The pure, static policy, usable with your own state. |
 
@@ -173,7 +178,7 @@ on top (the tighter of the two wins). The display vote follows whatever
 | `battery_mode_fps` | 30 | Cap in Battery game mode; the most that Severe heat allows. |
 | `thermal_cooldown` | 30 s | How long the status must stay lower before the cap recovers. |
 | `vote_frame_rate` | on | Ask the display for the rate the game runs at. |
-| `poll_interval` | 2 s | Poll period for the `JavaClassWrapper` fallback. |
+| `poll_interval` | 2 s | Poll period for the `JavaClassWrapper` fallback and the Linux backend. |
 | `safety_poll_interval` | 30 s | Safety read of the plugin backend; `0` turns it off. |
 
 ## Policy
@@ -226,7 +231,8 @@ it rounds depends on where the cap comes from (`paced_fps_cap()`):
 only after the status has stayed below the current level for
 `thermal_cooldown` seconds; it then steps down to the highest level seen
 during that time. A status flickering at a boundary does not make the frame
-rate flicker.
+rate flicker. Linux does not report a thermal status, so this does not run
+there.
 
 **Calibrate it.** The thresholds and the 30 s cool-down are a starting point,
 not a measurement. Play your hottest scene on your target devices and adjust
@@ -239,9 +245,14 @@ With `vote_frame_rate` on, the addon asks the platform for the rate the game
 actually runs at: `Engine.max_fps` when set, the panel's peak when it is 0. A
 game that drops to 30 fps on menus lets the panel follow instead of holding it
 at its peak. The vote follows a change of `Engine.max_fps` within a frame, and
-is resent after the app resumes. The plugin also keeps the last rate and
-re-applies it when Godot's render surface is recreated. A vote of 0 withdraws
-the request.
+is resent after the app resumes. The handler that applies
+`recommended_fps_cap()` to `Engine.max_fps` runs before the vote, so the
+display is asked for the cap that update just chose, not the previous one.
+The plugin also keeps the last rate and
+re-applies it when Godot's render surface is recreated, including when the
+surface already exists at the moment the callback is attached
+(`SurfaceHolder.addCallback` does not deliver `surfaceCreated` then). A vote
+of 0 withdraws the request. On Linux the vote is not made.
 
 ## Android notes
 
@@ -279,13 +290,48 @@ Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab
 | Lenovo Tab TB336FU | 16 | fixed 90 Hz | reports one rate; the reason a 60 cap is paced up to 90 |
 | Galaxy A16 (SM-A166U1) | 16 | fixed 90 Hz (60 hidden from apps) | apps are told `[90]` by both display APIs |
 
+## Linux and Steam Deck
+
+`DevicePowerLinuxBackend` reads `/sys/class/power_supply`. A supply is
+usually a symlink; that is followed. No process is spawned and nothing is
+parsed except the fixed `type`, `status`, `online` and `present` files.
+
+- An adapter (`Mains`, `USB`, `USB_C`, `USB_PD`, `Wireless`, and the other
+  USB types the kernel names) with `online` of `1` is external power. So is
+  a battery whose `status` is `Charging`. A charge limit (`Not charging`
+  while the adapter stays online) stays external: plugged in counts, whether
+  or not the pack is gaining charge.
+- Otherwise a present battery or UPS whose status is `Discharging`,
+  `Not charging` or `Full` is battery. An adapter that is present and offline
+  means unplugged, even if the status file could not be read.
+- No supply, or a battery status of `Unknown` with no adapter, is unknown.
+  A desktop with an empty `power_supply` class is unknown and stays uncapped.
+  A missing directory is unknown and does not log an error.
+
+The backend is polled (`poll_interval`, 2 s), same as the Android fallback.
+Plugging in is noticed within that, not by a kernel notification.
+
+Only the **current** refresh rate is known (`DisplayServer.screen_get_refresh_rate`).
+Pacing treats the panel as fixed at that rate: a 90 Hz Steam Deck OLED on
+battery paces a 60 cap up to 90, and a 144 Hz monitor paces it to 72. Modes
+the display could switch to are not visible, and this addon cannot switch
+them. Set `battery_fps` to a divisor of the rate you actually run (45 for a
+90 Hz panel, 40 for a Deck at 40 Hz) if the round-up is not what you want.
+A rate change while the game is focused is picked up on the next poll; float
+noise within half a hertz does not emit `changed`.
+
+Battery saver, game mode and thermal status are unknown on purpose. A raw
+zone temperature is not Android's thermal enum, and guessing one would cap
+frames on a number that means something different per device.
+
 ## Backends
 
 | Backend | When | How |
 | --- | --- | --- |
 | `DevicePowerAndroidPluginBackend` | Android, plugin in the export | The `DevicePowerAndroid` singleton's signals; getters are cached reads. |
 | `DevicePowerAndroidBackend` | Android, no plugin | `JavaClassWrapper`, polled every `poll_interval`; game mode on resume and focus. |
-| `DevicePowerNullBackend` | everything else | Everything unknown; the policy imposes nothing. |
+| `DevicePowerLinuxBackend` | Linux, including Steam Deck | sysfs `power_supply`, polled; current refresh rate only. No saver, game mode, thermal status or frame-rate vote. |
+| `DevicePowerNullBackend` | Windows, macOS, iOS, web | Everything unknown; the policy imposes nothing. |
 | `DevicePowerMockBackend` | tests | Fields you set. |
 
 The plugin (`android-plugin/`, Kotlin, Godot Android plugin v2) registers a
@@ -333,6 +379,10 @@ override-status 3` to exercise the battery and thermal paths.
 
 - The policy, pacing and vote behaviour, and the `JavaClassWrapper` backend,
   on the three devices above, as part of a shipping game.
+- Linux sysfs: the power-source decision and a fixture tree laid out like the
+  kernel (symlinks, trailing newlines, a zero-length proc read). Not run on a
+  Steam Deck or a laptop. A desktop with no battery reads as unknown and
+  stays uncapped.
 - The Kotlin plugin, the thermal back-off and the plugin backend: unit tests,
   the GDScript suite against a fake singleton, a Gradle export of the demo,
   and on the same three devices inside the game (Android 16; charger state

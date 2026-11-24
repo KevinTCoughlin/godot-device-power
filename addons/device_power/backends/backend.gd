@@ -8,7 +8,8 @@ extends RefCounted
 ##
 ## Every read has an honest default meaning "unknown". Concrete backends are
 ## [DevicePowerAndroidPluginBackend], [DevicePowerAndroidBackend],
-## [DevicePowerNullBackend] and [DevicePowerMockBackend].
+## [DevicePowerLinuxBackend], [DevicePowerNullBackend] and
+## [DevicePowerMockBackend].
 ##
 ## A backend either is polled ([method pushes_changes] is [code]false[/code];
 ## reads must then be cheap) or emits [signal changed] itself.
@@ -80,6 +81,13 @@ static func merge_refresh_rate(rates: PackedFloat32Array, rate: float) -> bool:
 			return false
 	rates.append(rate)
 	return true
+
+
+## Whether [method vote_frame_rate] can ask this platform for a rate. False
+## means the call would always fail, so the facade does not make it and does
+## not log a failed vote. Android can; a desktop compositor cannot.
+func can_vote_frame_rate() -> bool:
+	return false
 
 
 ## Asks the platform to run the game's surface at [param rate] frames per

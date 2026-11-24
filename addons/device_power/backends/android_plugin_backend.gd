@@ -61,6 +61,10 @@ func pushes_changes() -> bool:
 	return true
 
 
+func can_vote_frame_rate() -> bool:
+	return true
+
+
 func request_update() -> void:
 	if _plugin != null:
 		_plugin.call("refresh")

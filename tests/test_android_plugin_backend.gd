@@ -35,6 +35,7 @@ func test_reads_well_formed_values() -> void:
 	plugin.refresh_rates = PackedFloat32Array([60.0, 120.0])
 	assert_true(backend.is_compatible(), "API version 1")
 	assert_true(backend.pushes_changes(), "pushes")
+	assert_true(backend.can_vote_frame_rate(), "Surface.setFrameRate")
 	assert_eq(backend.get_backend_name(), "android_plugin")
 	assert_eq(backend.get_power_source(), 1, "external")
 	assert_eq(backend.is_power_saver_enabled(), false, "saver off")

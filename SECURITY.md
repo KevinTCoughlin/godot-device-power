@@ -42,8 +42,11 @@ as bugs if they do not:
 - **No permissions.** The Android plugin's manifest adds no
   `uses-permission`. The battery broadcast is sticky and protected, battery
   saver, thermal status and game mode are readable by any app, and
-  `Surface.setFrameRate()` acts only on the app's own surface. A change that
-  requires a permission is a security regression.
+  `Surface.setFrameRate()` acts only on the app's own surface. The Linux
+  backend reads only the fixed `type`, `status`, `online` and `present`
+  files under `/sys/class/power_supply`, which are world-readable; it does
+  not spawn a process. A change that requires a permission, or that shells
+  out for power state, is a security regression.
 - **No exported components.** The broadcast receiver is registered at run
   time as not exported (`RECEIVER_NOT_EXPORTED` from Android 13), so other
   apps cannot send it intents; it only acts on protected system broadcasts.

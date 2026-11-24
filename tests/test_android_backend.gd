@@ -10,6 +10,7 @@ extends "res://tests/android_backend_case.gd"
 func test_identity() -> void:
 	assert_eq(backend.get_backend_name(), "android")
 	assert_false(backend.pushes_changes(), "the fallback is polled")
+	assert_true(backend.can_vote_frame_rate(), "Surface.setFrameRate")
 
 
 func test_the_sdk_level_is_unknown_off_android() -> void:

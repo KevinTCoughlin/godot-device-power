@@ -10,9 +10,29 @@ Before 1.0 the public API may change in a minor release.
 
 ### Added
 
+- Linux, including Steam Deck, reports its power source from
+  `/sys/class/power_supply` (`DevicePowerLinuxBackend`). Plugged in wins over
+  the battery's status, so a charge limit stays external power. Battery
+  saver, game mode and thermal status stay unknown, and the frame-rate vote
+  is not made. Only the current refresh rate is known, and caps are paced as
+  if the panel were fixed at that rate. Windows, macOS, iOS and the web stay
+  on the null backend: Godot 4 has no power API there.
 - Releases carry signed SLSA build provenance for every archive (a
   `.sigstore.json` bundle; check with `gh attestation verify`).
 - CodeQL scans the workflows and the Kotlin plugin on every pull request.
+
+### Fixed
+
+- The display vote is sent after `changed`. A handler that applies
+  `recommended_fps_cap()` to `Engine.max_fps` is what gets voted on that
+  update, including resume, instead of the previous cap.
+- Polled backends re-read refresh rates on every poll. A rate change is
+  noticed without a focus event, and float noise within half a hertz does
+  not emit `changed`.
+- The Android plugin reapplies a pending frame-rate vote when it attaches to
+  a render surface that already exists. `SurfaceHolder.addCallback` does not
+  deliver `surfaceCreated` in that case, so a vote that raced surface
+  creation could sit unused until the next resume or the 30 s safety poll.
 
 ### Changed
 

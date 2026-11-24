@@ -5,11 +5,14 @@ extends Control
 
 ## Shows what DevicePower reports and the cap it recommends, and applies it.
 ##
-## On a desktop everything is unknown (the null backend) and the cap is 0.
-## On an Android device, plug and unplug a charger, toggle battery saver or
-## pick a game mode in the Game Dashboard and watch the cap follow. The
-## "Menu cap" toggle stands in for a game dropping its own cap on a menu,
-## which the frame rate vote follows.
+## On Linux the power source comes from sysfs: unplug a laptop or a Steam
+## Deck and the cap follows within a poll. Battery saver, game mode and heat
+## stay unknown there, and the display vote is not made. On Windows, macOS
+## and iOS everything is unknown (the null backend) and the cap is 0. On an
+## Android device, plug and unplug a charger, toggle battery saver or pick a
+## game mode in the Game Dashboard and watch the cap follow. The "Menu cap"
+## toggle stands in for a game dropping its own cap on a menu, which the
+## frame rate vote follows.
 
 const MENU_FPS := 30
 
