@@ -37,8 +37,9 @@ that, in one place, with a policy you can read and replace.
 ## Requirements
 
 - Godot 4.7.x (4.7.2, the current stable, is what CI and the device tests use).
-  Godot 4.8 beta 2 is exercised as a preview and is not a production target
-  yet. See [Godot 4.8 beta 2](#godot-48-beta-2-preview).
+  A non-blocking CI lane also runs Godot 4.8 beta 5. That lane does not fail
+  the workflow, and 4.8 is not a production target. See
+  [Godot 4.8 preview](#godot-48-beta-2-preview).
 - For the Android plugin: an Android export with **Use Gradle Build** on
   (Godot's Android build template installed), minSdk 24, as Godot's own.
   Without a Gradle build the addon still works on Android through the
@@ -74,13 +75,20 @@ Checked against the official editor, export templates and `godot-lib` AAR:
 The engine-build Python bump (3.9 to 3.10), the BaseButton touch fix and the
 Compatibility multiply-blend fix do not change this addon.
 
-CI now tracks 4.8 beta 4 (18 November 2026, `4.8.beta4.official.b070e63b1`)
-in place of beta 3. Beta 4's Android template keeps the same versions (AGP
+CI tracked 4.8 beta 4 (18 November 2026, `4.8.beta4.official.b070e63b1`)
+after beta 3. Beta 4's Android template keeps the same versions (AGP
 8.13.2, Gradle 8.14.5, Kotlin 2.1.21, SDK 36, NDK 29.0.14206865); only the
 OpenXR vendors dependency moves from 5.2.0-rc1 to 5.2.0-stable. Its Android
 changes are input fixes (hover dispatch, long press, sensor rotation cache,
 startup orientation) and a `@JvmOverloads` `force` parameter on
 `Godot.onConfigurationChanged`, none of which touch the plugin API above. The size figures above are from beta 2.
+
+CI now tracks 4.8 beta 5 (24 November 2026, commit `a661dfdbc`) in place of
+beta 4. The published notes are regression fixes, including a revert of an
+unfinished Linux GameMode integration. They do not change `GodotPlugin`,
+`SignalInfo`, `UsedByGodot`, `JavaClassWrapper` or
+`EditorExportPlugin._get_android_libraries`. The lane stays non-blocking.
+The plugin is still built and shipped against `4.7.2.stable`.
 
 These device checks are still open. On an arm64 device, before treating 4.8
 as supported:

@@ -42,8 +42,8 @@ Before 1.0 the public API may change in a minor release.
 ### Changed
 
 - The non-blocking Godot 4.8 preview in CI (headless suite and the
-  `godot-lib` AAR compile check) now runs against 4.8-beta4 (`b070e63b1`)
-  instead of 4.8-beta3.
+  `godot-lib` AAR compile check) now runs against 4.8-beta5 (commit
+  `a661dfdbc`) instead of 4.8-beta4.
 
 ## [0.1.1] - 2026-11-04
 
