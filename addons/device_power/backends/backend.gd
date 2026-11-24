@@ -8,8 +8,8 @@ extends RefCounted
 ##
 ## Every read has an honest default meaning "unknown". Concrete backends are
 ## [DevicePowerAndroidPluginBackend], [DevicePowerAndroidBackend],
-## [DevicePowerLinuxBackend], [DevicePowerNullBackend] and
-## [DevicePowerMockBackend].
+## [DevicePowerLinuxBackend], [DevicePowerNativeBackend],
+## [DevicePowerNullBackend] and [DevicePowerMockBackend].
 ##
 ## A backend either is polled ([method pushes_changes] is [code]false[/code];
 ## reads must then be cheap) or emits [signal changed] itself.

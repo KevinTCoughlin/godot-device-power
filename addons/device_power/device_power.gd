@@ -11,7 +11,8 @@ extends Node
 ## ([DevicePowerAndroidPluginBackend] when the Android plugin is in the
 ## export, [DevicePowerAndroidBackend] on Android without it,
 ## [DevicePowerLinuxBackend] on Linux, including Steam Deck,
-## [DevicePowerNullBackend] on Windows, macOS, iOS and the web, or one
+## [DevicePowerNativeBackend] on Windows, macOS and iOS when the GDExtension
+## is loaded and reports support, [DevicePowerNullBackend] otherwise, or one
 ## injected by tests) and emits [signal changed] when anything it reports
 ## changes.
 ##
@@ -264,27 +265,40 @@ func recommended_fps_cap(refresh_rate: float) -> int:
 ## The backend for a platform: [param os_name] as [method OS.get_name]
 ## reports it, and [param get_singleton] a [Callable] taking a singleton
 ## name and returning the [Object] or [code]null[/code]. Android uses the
-## plugin, then the [JavaClassWrapper] fallback. Linux reads sysfs. Every
-## other name gets [DevicePowerNullBackend]: Godot 4 has no power API there.
+## plugin, then the [JavaClassWrapper] fallback. Linux reads sysfs. Windows,
+## macOS and iOS use the GDExtension when that binary can read the platform.
+## Anything else, and a native binary that declines, is
+## [DevicePowerNullBackend].
 static func select_backend(os_name: String, get_singleton: Callable) -> DevicePowerBackend:
-	if os_name == "Android":
-		var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
-		if plugin is Object and plugin != null:
-			var backend := DevicePowerAndroidPluginBackend.new(plugin)
-			if backend.is_compatible():
-				return backend
-			push_warning(
-				(
-					"DevicePower: the %s plugin speaks another API; falling back."
-					% ANDROID_PLUGIN_SINGLETON
-				)
+	if os_name != "Android":
+		return _backend_without_android(os_name)
+	var plugin: Variant = get_singleton.call(ANDROID_PLUGIN_SINGLETON)
+	if plugin is Object and plugin != null:
+		var backend := DevicePowerAndroidPluginBackend.new(plugin)
+		if backend.is_compatible():
+			return backend
+		push_warning(
+			(
+				"DevicePower: the %s plugin speaks another API; falling back."
+				% ANDROID_PLUGIN_SINGLETON
 			)
-		var runtime: Variant = get_singleton.call("AndroidRuntime")
-		if runtime is Object and runtime != null:
-			return DevicePowerAndroidBackend.new(runtime)
-		return DevicePowerNullBackend.new()
+		)
+	var runtime: Variant = get_singleton.call("AndroidRuntime")
+	if runtime is Object and runtime != null:
+		return DevicePowerAndroidBackend.new(runtime)
+	return DevicePowerNullBackend.new()
+
+
+## Linux reads sysfs. Windows, macOS and iOS use the GDExtension when this
+## binary can read the platform. A missing library, or one built for another
+## OS, leaves the null backend in place. The web has no read.
+static func _backend_without_android(os_name: String) -> DevicePowerBackend:
 	if os_name == "Linux":
 		return DevicePowerLinuxBackend.new()
+	if os_name == "Windows" or os_name == "macOS" or os_name == "iOS":
+		var native := DevicePowerNativeBackend.from_runtime()
+		if native != null:
+			return native
 	return DevicePowerNullBackend.new()
 
 

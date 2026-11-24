@@ -15,11 +15,20 @@ Before 1.0 the public API may change in a minor release.
   the battery's status, so a charge limit stays external power. Battery
   saver, game mode and thermal status stay unknown, and the frame-rate vote
   is not made. Only the current refresh rate is known, and caps are paced as
-  if the panel were fixed at that rate. Windows, macOS, iOS and the web stay
-  on the null backend: Godot 4 has no power API there.
+  if the panel were fixed at that rate. The web stays on the null backend.
+  Windows, macOS and iOS use the GDExtension when it is loaded and otherwise
+  stay on the null backend.
 - Releases carry signed SLSA build provenance for every archive (a
   `.sigstore.json` bundle; check with `gh attestation verify`).
 - CodeQL scans the workflows and the Kotlin plugin on every pull request.
+- Windows power source and battery saver from `GetSystemPowerStatus`, via an
+  optional GDExtension (`DevicePowerNative`). The library is single precision,
+  matching the official Godot 4.7 editor. If it is missing, or `is_supported`
+  is false, Windows stays on the null backend. macOS (IOKit and Low Power
+  Mode) and iOS (`UIDevice`, Low Power Mode) are scaffolded in
+  `native/src/apple_power.mm` and are not compiled; Apple thermal states are
+  not mapped onto Android's thermal enum. CI builds the Linux and Windows
+  libraries and loads the Linux one in Godot.
 
 ### Fixed
 

@@ -7,7 +7,16 @@ export_presets.cfg
 android/
 
 # AARs built by scripts/build_android.sh, and shipped in release archives.
+# Also the GDExtension binaries and the .gdextension file installed by
+# scripts/build_native.sh. Neither is committed.
 addons/device_power/bin/
+
+# godot-cpp checkout and native build output.
+native/.godot-cpp/
+native/bin/
+native/.sconsign.dblite
+native/**/*.os
+native/**/*.obj
 
 # Gradle state and outputs for the Kotlin plugin.
 android-plugin/.gradle/
