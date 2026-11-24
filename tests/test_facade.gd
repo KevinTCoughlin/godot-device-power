@@ -74,6 +74,58 @@ func test_resuming_resends_the_vote_and_asks_for_an_update() -> void:
 	assert_eq(mock.update_requests, 1, "and asks the backend to re-read")
 
 
+func test_losing_focus_does_not_reread_or_revote() -> void:
+	var votes := mock.votes.size()
+	power._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	power._notification(Node.NOTIFICATION_ENTER_TREE)
+	assert_eq(mock.update_requests, 0, "only resume and focus-in re-read")
+	assert_eq(mock.votes.size(), votes, "and neither re-votes")
+
+
+func test_a_change_handler_cap_is_what_gets_voted() -> void:
+	# The handler applies the recommendation to Engine.max_fps. The vote has
+	# to see that value in the same refresh: voting first would ask the
+	# display for the previous cap (the panel's peak) for a frame.
+	power.changed.connect(func() -> void: Engine.max_fps = power.recommended_fps_cap(120.0))
+	mock.votes.clear()
+	mock.power_source = S.BATTERY
+	power.refresh()
+	assert_eq(Engine.max_fps, 60, "the handler applied the battery cap")
+	assert_eq(mock.votes, [60.0] as Array[float], "and that cap was voted, not the old peak")
+	mock.power_source = S.EXTERNAL
+	power._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(mock.votes.back(), 120.0, "resume votes the cap the handler just applied")
+
+
+func test_a_polled_backend_notices_a_refresh_rate_change_without_focus() -> void:
+	mock.refresh_rates = PackedFloat32Array([60.0])
+	power.refresh()
+	var before := changes
+	mock.refresh_rates = PackedFloat32Array([144.0])
+	power.refresh()
+	assert_eq(changes - before, 1, "a poll sees the new rate")
+	assert_eq(power.get_peak_refresh_rate(), 144.0, "peak")
+	mock.power_source = S.BATTERY
+	power.refresh()
+	assert_eq(power.recommended_fps_cap(144.0), 72, "60 paces up to 72 on 144 Hz")
+
+
+func test_float_noise_in_the_refresh_rate_does_not_flap() -> void:
+	mock.refresh_rates = PackedFloat32Array([60.000004, 120.00001])
+	var fresh := make_facade()
+	fresh.set_backend(mock)
+	var before := changes
+	mock.refresh_rates = PackedFloat32Array([120.4, 59.94])
+	fresh.refresh()
+	assert_eq(changes - before, 0, "within half a hertz is the same list")
+	assert_eq(
+		fresh.get_refresh_rates(),
+		PackedFloat32Array([60.000004, 120.00001]),
+		"the first reading is kept",
+	)
+	fresh.free()
+
+
 func test_a_failed_vote_is_retried_on_polls_not_every_frame() -> void:
 	mock.vote_ok = false
 	Engine.max_fps = 60
@@ -210,6 +262,16 @@ func test_a_pushing_backend_is_polled_only_as_a_safety_net() -> void:
 	facade._process(1000.0)
 	assert_eq(changes - before, 1, "0 turns the safety poll off")
 	facade.free()
+
+
+func test_freeing_the_facade_disconnects_the_backend() -> void:
+	var backend := DevicePowerMockBackend.new()
+	var facade := make_facade()
+	facade.set_backend(backend)
+	assert_eq(backend.changed.get_connections().size(), 1, "connected")
+	facade.free()
+	assert_eq(backend.changed.get_connections().size(), 0, "freed facade drops it")
+	backend.changed.emit()
 
 
 func test_replacing_the_backend_disconnects_the_old_one() -> void:

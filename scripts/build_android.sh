@@ -15,7 +15,7 @@
 #
 # GODOT_LIB_AAR, when set, compiles against that godot-lib file instead of
 # org.godotengine:godot:4.7.2.stable. The release pin does not change.
-# scripts/check_godot_lib.sh sets it for the 4.8 beta 2 AAR.
+# scripts/check_godot_lib.sh sets it for the 4.8 beta AAR named in that script.
 
 set -euo pipefail
 

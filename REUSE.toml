@@ -14,6 +14,7 @@ path = [
     "project.godot",
     "demo/demo.tscn",
     "addons/device_power/plugin.cfg",
+    "addons/device_power/icon.png",
     "addons/device_power/LICENSE",
     "CITATION.cff",
     "LICENSE",

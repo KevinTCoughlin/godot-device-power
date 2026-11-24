@@ -63,6 +63,10 @@ func get_backend_name() -> String:
 	return "android"
 
 
+func can_vote_frame_rate() -> bool:
+	return true
+
+
 func get_power_source() -> int:
 	var context = _context()
 	if context == null:

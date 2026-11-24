@@ -10,6 +10,20 @@ Before 1.0 the public API may change in a minor release.
 
 ### Added
 
+- CI uploads `godot-device-power-<version>.zip` and the Asset Library zip
+  (`scripts/package.sh`) as a build artifact. That job does not publish a
+  release. The zip entry order and timestamps are pinned so the same commit
+  and toolchain produce the same archives.
+- A square Asset Library icon at `.github/store/icon.png`, also shipped as
+  `addons/device_power/icon.png`.
+- Linux, including Steam Deck, reports its power source from
+  `/sys/class/power_supply` (`DevicePowerLinuxBackend`). Plugged in wins over
+  the battery's status, so a charge limit stays external power. Battery
+  saver, game mode and thermal status stay unknown, and the frame-rate vote
+  is not made. Only the current refresh rate is known, and caps are paced as
+  if the panel were fixed at that rate. The web stays on the null backend.
+  Windows, macOS and iOS use the GDExtension when it is loaded and otherwise
+  stay on the null backend.
 - Releases carry signed SLSA build provenance for every archive (a
   `.sigstore.json` bundle; check with `gh attestation verify`).
 - CodeQL scans the workflows and the Kotlin plugin on every pull request.
@@ -22,11 +36,34 @@ Before 1.0 the public API may change in a minor release.
   not mapped onto Android's thermal enum. CI builds the Linux and Windows
   libraries and loads the Linux one in Godot.
 
+### Fixed
+
+- Shutting down or freeing `DevicePower` releases the backend first. The
+  Android plugin backend disconnects the engine singleton's signals in
+  `release()`, and the native backend drops the GDExtension object, so a
+  reload does not call into a freed object.
+- `select_backend()` treats a missing Android singleton lookup as the null
+  backend. An unknown OS name was already the null backend.
+- The display vote is sent after `changed`. A handler that applies
+  `recommended_fps_cap()` to `Engine.max_fps` is what gets voted on that
+  update, including resume, instead of the previous cap.
+- Polled backends re-read refresh rates on every poll. A rate change is
+  noticed without a focus event, and float noise within half a hertz does
+  not emit `changed`.
+- The Android plugin reapplies a pending frame-rate vote when it attaches to
+  a render surface that already exists. `SurfaceHolder.addCallback` does not
+  deliver `surfaceCreated` in that case, so a vote that raced surface
+  creation could sit unused until the next resume or the 30 s safety poll.
+
 ### Changed
 
+- The README platform matrix covers Android, Linux, the Windows GDExtension,
+  and the platforms that stay unknown (macOS and iOS until their scaffold is
+  built, the web, and Windows when the extension is missing). Unknown is a
+  normal result, not an error.
 - The non-blocking Godot 4.8 preview in CI (headless suite and the
-  `godot-lib` AAR compile check) now runs against 4.8-beta4 (`b070e63b1`)
-  instead of 4.8-beta3.
+  `godot-lib` AAR compile check) now runs against 4.8-beta5 (commit
+  `a661dfdbc`) instead of 4.8-beta4.
 
 ## [0.1.1] - 2026-11-04
 

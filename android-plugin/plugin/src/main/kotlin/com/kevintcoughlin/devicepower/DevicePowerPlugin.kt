@@ -173,8 +173,11 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
      * CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS); 0 withdraws the vote. Returns
      * whether the request was made now: false before API 31, without a valid
      * surface, or for a rate [FrameRateVote.sanitize] refuses. The rate is
-     * kept and re-applied when the surface is created or changed, so a
-     * refused vote for want of a surface is made as soon as there is one.
+     * kept and re-applied when the surface is created or changed, and when
+     * the callback is attached to a surface that already exists: addCallback
+     * does not deliver surfaceCreated in that case, so a vote that won the
+     * race against surface creation would otherwise sit unused until the
+     * next resume or the safety poll.
      */
     @UsedByGodot
     fun voteFrameRate(rate: Float): Boolean {
@@ -183,7 +186,7 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
             requestedRate = sane
             applyVoteLocked()
         }
-        if (surfaceHolder == null) {
+        if (!made && Build.VERSION.SDK_INT >= 31) {
             mainHandler.post { attachSurfaceCallback() }
         }
         return made
@@ -318,12 +321,18 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
 
     private fun attachSurfaceCallback() {
         val holder = guarded("render surface") { godot.renderView?.view?.holder } ?: return
-        if (holder === surfaceHolder) {
-            return
+        if (holder !== surfaceHolder) {
+            surfaceHolder?.removeCallback(surfaceCallback)
+            holder.addCallback(surfaceCallback)
+            surfaceHolder = holder
         }
-        surfaceHolder?.removeCallback(surfaceCallback)
-        holder.addCallback(surfaceCallback)
-        surfaceHolder = holder
+        // addCallback does not call surfaceCreated for a surface that is
+        // already current. Re-apply any pending vote now, on the main thread,
+        // which is the thread the view is touched from elsewhere here.
+        val valid = guarded("render surface") { holder.surface?.isValid } == true
+        if (valid) {
+            reapplyVote()
+        }
     }
 
     private fun reapplyVote() {

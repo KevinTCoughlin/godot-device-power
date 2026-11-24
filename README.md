@@ -11,10 +11,15 @@ mode respected over the power source.
 On Android it ships a small Kotlin plugin that listens for the platform's own
 change notifications, so nothing is polled. Without the plugin (a non-Gradle
 export) it falls back to reading the same state through `JavaClassWrapper`.
-On Windows, a GDExtension reads `GetSystemPowerStatus`, including battery
-saver, when that library is present; if it is missing or declines, the result
-is the same as everywhere else: "unknown", which imposes nothing. macOS and
-iOS have an unbuilt scaffold for the same extension and stay unknown.
+On Linux, including Steam Deck, it reads `/sys/class/power_supply`: Godot 4
+has no power API (`OS.get_power_state()` was removed before 4.0). That
+answers battery versus plugged-in only. Battery saver, game mode and thermal
+status stay unknown there, and there is no portable way to ask the compositor
+for a refresh rate, so the vote is not made. On Windows, a GDExtension reads
+`GetSystemPowerStatus`, including battery saver, when that library is present.
+If it is missing or declines, the result is unknown, which imposes nothing.
+macOS and iOS have an unbuilt scaffold for the same extension and stay
+unknown, as does the web.
 
 - Repository: <https://github.com/KevinTCoughlin/godot-device-power>
 - License: MIT (see [`LICENSE`](LICENSE))
@@ -35,8 +40,9 @@ that, in one place, with a policy you can read and replace.
 ## Requirements
 
 - Godot 4.7.x (4.7.2, the current stable, is what CI and the device tests use).
-  Godot 4.8 beta 2 is exercised as a preview and is not a production target
-  yet. See [Godot 4.8 beta 2](#godot-48-beta-2-preview).
+  A non-blocking CI lane also runs Godot 4.8 beta 5. That lane does not fail
+  the workflow, and 4.8 is not a production target. See
+  [Godot 4.8 preview](#godot-48-beta-2-preview).
 - For the Android plugin: an Android export with **Use Gradle Build** on
   (Godot's Android build template installed), minSdk 24, as Godot's own.
   Without a Gradle build the addon still works on Android through the
@@ -72,13 +78,20 @@ Checked against the official editor, export templates and `godot-lib` AAR:
 The engine-build Python bump (3.9 to 3.10), the BaseButton touch fix and the
 Compatibility multiply-blend fix do not change this addon.
 
-CI now tracks 4.8 beta 4 (18 November 2026, `4.8.beta4.official.b070e63b1`)
-in place of beta 3. Beta 4's Android template keeps the same versions (AGP
+CI tracked 4.8 beta 4 (18 November 2026, `4.8.beta4.official.b070e63b1`)
+after beta 3. Beta 4's Android template keeps the same versions (AGP
 8.13.2, Gradle 8.14.5, Kotlin 2.1.21, SDK 36, NDK 29.0.14206865); only the
 OpenXR vendors dependency moves from 5.2.0-rc1 to 5.2.0-stable. Its Android
 changes are input fixes (hover dispatch, long press, sensor rotation cache,
 startup orientation) and a `@JvmOverloads` `force` parameter on
 `Godot.onConfigurationChanged`, none of which touch the plugin API above. The size figures above are from beta 2.
+
+CI now tracks 4.8 beta 5 (24 November 2026, commit `a661dfdbc`) in place of
+beta 4. The published notes are regression fixes, including a revert of an
+unfinished Linux GameMode integration. They do not change `GodotPlugin`,
+`SignalInfo`, `UsedByGodot`, `JavaClassWrapper` or
+`EditorExportPlugin._get_android_libraries`. The lane stays non-blocking.
+The plugin is still built and shipped against `4.7.2.stable`.
 
 These device checks are still open. On an arm64 device, before treating 4.8
 as supported:
@@ -109,6 +122,13 @@ as supported:
 3. Enable **Device Power** in *Project → Project Settings → Plugins*. The
    plugin installs the `DevicePower` autoload and registers the export plugin
    that bundles the AAR into Android exports.
+
+CI on pull requests and on `main` builds those same two zips and uploads
+them as the `godot-device-power-package` artifact. That job does not create
+a tag, a release, or an Asset Library entry. The square icon for the library
+form is [`.github/store/icon.png`](.github/store/icon.png) (256×256, also
+shipped as `addons/device_power/icon.png`). The 16:9 preview stays
+[`.github/store/thumbnail.png`](.github/store/thumbnail.png).
 
 ### From source
 
@@ -166,7 +186,7 @@ on top (the tighter of the two wins). The display vote follows whatever
 | `get_refresh_rates()`, `get_peak_refresh_rate()` | What the panel can run at its current resolution. |
 | `recommended_fps_cap(refresh_rate) -> int` | The policy below for the current state, paced to the panel. `0` is no cap. |
 | `refresh()` | Read the backend now. |
-| `get_backend_name()` | `android_plugin`, `android`, `null` or `mock`. |
+| `get_backend_name()` | `android_plugin`, `android`, `linux`, `windows`, `macos`, `ios`, `native`, `null` or `mock`. |
 | `set_backend(backend)` | Inject a backend (tests use `DevicePowerMockBackend`). |
 | `fps_cap()`, `thermal_limit()`, `paced_cap()`, `paced_cap_down()`, `paced_fps_cap()`, `thermal_back_off()`, `frame_rate_vote()`, `select_backend()` | The pure, static policy, usable with your own state. |
 
@@ -176,7 +196,7 @@ on top (the tighter of the two wins). The display vote follows whatever
 | `battery_mode_fps` | 30 | Cap in Battery game mode; the most that Severe heat allows. |
 | `thermal_cooldown` | 30 s | How long the status must stay lower before the cap recovers. |
 | `vote_frame_rate` | on | Ask the display for the rate the game runs at. |
-| `poll_interval` | 2 s | Poll period for the `JavaClassWrapper` fallback. |
+| `poll_interval` | 2 s | Poll period for the `JavaClassWrapper` fallback and the Linux backend. |
 | `safety_poll_interval` | 30 s | Safety read of the plugin backend; `0` turns it off. |
 
 ## Policy
@@ -229,7 +249,8 @@ it rounds depends on where the cap comes from (`paced_fps_cap()`):
 only after the status has stayed below the current level for
 `thermal_cooldown` seconds; it then steps down to the highest level seen
 during that time. A status flickering at a boundary does not make the frame
-rate flicker.
+rate flicker. Linux does not report a thermal status, so this does not run
+there.
 
 **Calibrate it.** The thresholds and the 30 s cool-down are a starting point,
 not a measurement. Play your hottest scene on your target devices and adjust
@@ -242,9 +263,14 @@ With `vote_frame_rate` on, the addon asks the platform for the rate the game
 actually runs at: `Engine.max_fps` when set, the panel's peak when it is 0. A
 game that drops to 30 fps on menus lets the panel follow instead of holding it
 at its peak. The vote follows a change of `Engine.max_fps` within a frame, and
-is resent after the app resumes. The plugin also keeps the last rate and
-re-applies it when Godot's render surface is recreated. A vote of 0 withdraws
-the request.
+is resent after the app resumes. The handler that applies
+`recommended_fps_cap()` to `Engine.max_fps` runs before the vote, so the
+display is asked for the cap that update just chose, not the previous one.
+The plugin also keeps the last rate and
+re-applies it when Godot's render surface is recreated, including when the
+surface already exists at the moment the callback is attached
+(`SurfaceHolder.addCallback` does not deliver `surfaceCreated` then). A vote
+of 0 withdraws the request. On Linux the vote is not made.
 
 ## Android notes
 
@@ -282,15 +308,78 @@ Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab
 | Lenovo Tab TB336FU | 16 | fixed 90 Hz | reports one rate; the reason a 60 cap is paced up to 90 |
 | Galaxy A16 (SM-A166U1) | 16 | fixed 90 Hz (60 hidden from apps) | apps are told `[90]` by both display APIs |
 
+## Linux and Steam Deck
+
+`DevicePowerLinuxBackend` reads `/sys/class/power_supply`. A supply is
+usually a symlink; that is followed. No process is spawned and nothing is
+parsed except the fixed `type`, `status`, `online` and `present` files.
+
+- An adapter (`Mains`, `USB`, `USB_C`, `USB_PD`, `Wireless`, and the other
+  USB types the kernel names) with `online` of `1` is external power. So is
+  a battery whose `status` is `Charging`. A charge limit (`Not charging`
+  while the adapter stays online) stays external: plugged in counts, whether
+  or not the pack is gaining charge.
+- Otherwise a present battery or UPS whose status is `Discharging`,
+  `Not charging` or `Full` is battery. An adapter that is present and offline
+  means unplugged, even if the status file could not be read.
+- No supply, or a battery status of `Unknown` with no adapter, is unknown.
+  A desktop with an empty `power_supply` class is unknown and stays uncapped.
+  A missing directory is unknown and does not log an error.
+
+The backend is polled (`poll_interval`, 2 s), same as the Android fallback.
+Plugging in is noticed within that, not by a kernel notification.
+
+Only the **current** refresh rate is known (`DisplayServer.screen_get_refresh_rate`).
+Pacing treats the panel as fixed at that rate: a 90 Hz Steam Deck OLED on
+battery paces a 60 cap up to 90, and a 144 Hz monitor paces it to 72. Modes
+the display could switch to are not visible, and this addon cannot switch
+them. Set `battery_fps` to a divisor of the rate you actually run (45 for a
+90 Hz panel, 40 for a Deck at 40 Hz) if the round-up is not what you want.
+A rate change while the game is focused is picked up on the next poll; float
+noise within half a hertz does not emit `changed`.
+
+Battery saver, game mode and thermal status are unknown on purpose. A raw
+zone temperature is not Android's thermal enum, and guessing one would cap
+frames on a number that means something different per device.
+
+## Platform support
+
+Unknown is a normal result. It imposes no frame cap, and it is not an error.
+A missing file, a missing Android bridge, or a platform Godot 4 cannot ask
+all read the same way.
+
+| Platform | Power source | Battery saver | Game mode | Thermal | Refresh rates | Frame-rate vote |
+| --- | --- | --- | --- | --- | --- | --- |
+| Android, Gradle plugin | read | read | API 31+ | API 29+ | modes at the current resolution | `Surface.setFrameRate`, API 31+ |
+| Android, no plugin | read, polled | read, polled | API 31+, on focus | API 29+, polled | same, polled | same |
+| Linux, including Steam Deck | sysfs, polled | unknown | unknown | unknown | current rate only | not made |
+| Windows, extension loaded | `GetSystemPowerStatus`, polled | read | unknown | unknown | current rate only | not made |
+| macOS, iOS | unknown until the Apple scaffold is built | unknown | unknown | unknown | not read | not made |
+| Web, or Windows without the extension | unknown | unknown | unknown | unknown | not read | not made |
+
+On Android, a failed read or an older API level is unknown for that one
+value. The rest still work. If the plugin is missing or speaks another API,
+the addon uses the `JavaClassWrapper` backend, then the null backend. Linux
+with no `power_supply` class (a desktop, or a sandbox that hides sysfs) is
+unknown and stays uncapped. Windows without the GDExtension, macOS, iOS and
+the web stay on the null backend and impose no cap.
+
 ## Backends
 
 | Backend | When | How |
 | --- | --- | --- |
 | `DevicePowerAndroidPluginBackend` | Android, plugin in the export | The `DevicePowerAndroid` singleton's signals; getters are cached reads. |
 | `DevicePowerAndroidBackend` | Android, no plugin | `JavaClassWrapper`, polled every `poll_interval`; game mode on resume and focus. |
+| `DevicePowerLinuxBackend` | Linux, including Steam Deck | sysfs `power_supply`, polled; current refresh rate only. No saver, game mode, thermal status or frame-rate vote. |
 | `DevicePowerNativeBackend` | Windows, when the GDExtension loaded and `is_supported` is true | `GetSystemPowerStatus`, including battery saver. macOS and iOS stay unsupported until their scaffold is built. |
-| `DevicePowerNullBackend` | everywhere else, and when the extension is missing | Everything unknown; the policy imposes nothing. |
+| `DevicePowerNullBackend` | the web, and Windows, macOS or iOS when the extension is missing | Everything unknown; the policy imposes nothing. |
 | `DevicePowerMockBackend` | tests | Fields you set. |
+
+`release()` is part of the backend contract. The facade calls it before it
+drops a backend, on shutdown and when a backend is replaced. A backend that
+subscribed to anything overrides it. The Android plugin backend disconnects
+the engine singleton there, and the native backend drops the GDExtension
+object, so a reload does not call into a freed object.
 
 The plugin (`android-plugin/`, Kotlin, Godot Android plugin v2) registers a
 broadcast receiver for `ACTION_BATTERY_CHANGED` and
@@ -361,6 +450,10 @@ override-status 3` to exercise the battery and thermal paths.
 
 - The policy, pacing and vote behaviour, and the `JavaClassWrapper` backend,
   on the three devices above, as part of a shipping game.
+- Linux sysfs: the power-source decision and a fixture tree laid out like the
+  kernel (symlinks, trailing newlines, a zero-length proc read). Not run on a
+  Steam Deck or a laptop. A desktop with no battery reads as unknown and
+  stays uncapped.
 - The Kotlin plugin, the thermal back-off and the plugin backend: unit tests,
   the GDScript suite against a fake singleton, a Gradle export of the demo,
   and on the same three devices inside the game (Android 16; charger state

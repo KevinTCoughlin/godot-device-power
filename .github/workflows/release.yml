@@ -65,45 +65,9 @@ jobs:
         run: ./scripts/build_android.sh build
 
       - name: Stage the archive
-        id: stage
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          name="godot-device-power-${VERSION}"
-          stage="dist/${name}"
-          mkdir -p "${stage}/addons"
-          cp -r addons/device_power "${stage}/addons/"
-          cp README.md LICENSE CHANGELOG.md "${stage}/"
-
-          # The archive ships only what a game installs: the addon with both
-          # AARs, no tests, demo or Kotlin sources.
-          test -f "${stage}/addons/device_power/bin/debug/device_power-debug.aar"
-          test -f "${stage}/addons/device_power/bin/release/device_power-release.aar"
-          test -f "${stage}/addons/device_power/plugin.cfg"
-          test -f "${stage}/addons/device_power/export_plugin.gd"
-          test -f "${stage}/addons/device_power/device_power.gd"
-          test ! -e "${stage}/tests"
-
-          (cd dist && zip -q -r "${name}.zip" "${name}")
-          (cd dist && sha256sum "${name}.zip" > "${name}.zip.sha256")
-          unzip -l "dist/${name}.zip"
-
-          # Godot Asset Store archive: rooted at addons/, with the readme and
-          # changelog inside the plugin folder beside its LICENSE (users keep
-          # that folder, not the repository root), and no hidden files.
-          store="dist/store"
-          mkdir -p "${store}/addons"
-          cp -r addons/device_power "${store}/addons/"
-          cp README.md CHANGELOG.md "${store}/addons/device_power/"
-          find "${store}" -mindepth 1 -name '.*' -prune -exec rm -rf {} +
-          test -f "${store}/addons/device_power/LICENSE"
-          test -f "${store}/addons/device_power/README.md"
-          test -f "${store}/addons/device_power/bin/debug/device_power-debug.aar"
-          test -f "${store}/addons/device_power/bin/release/device_power-release.aar"
-          (cd "${store}" && zip -q -r "../${name}-asset-store.zip" addons)
-          (cd dist && sha256sum "${name}-asset-store.zip" > "${name}-asset-store.zip.sha256")
-          unzip -l "dist/${name}-asset-store.zip"
+        run: ./scripts/package.sh "$VERSION"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

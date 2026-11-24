@@ -35,6 +35,7 @@ func test_reads_well_formed_values() -> void:
 	plugin.refresh_rates = PackedFloat32Array([60.0, 120.0])
 	assert_true(backend.is_compatible(), "API version 1")
 	assert_true(backend.pushes_changes(), "pushes")
+	assert_true(backend.can_vote_frame_rate(), "Surface.setFrameRate")
 	assert_eq(backend.get_backend_name(), "android_plugin")
 	assert_eq(backend.get_power_source(), 1, "external")
 	assert_eq(backend.is_power_saver_enabled(), false, "saver off")
@@ -191,6 +192,37 @@ func test_the_facade_votes_through_the_plugin() -> void:
 	Engine.max_fps = 30
 	power._process(0.0)
 	assert_eq(plugin.votes.back(), 30.0, "the game's cap")
+
+
+func test_release_disconnects_plugin_signals() -> void:
+	var lone: Object = FakePlugin.new()
+	var other := DevicePowerAndroidPluginBackend.new(lone)
+	assert_eq(_signal_listeners(lone), 4, "one hook per plugin signal")
+	other.release()
+	assert_eq(_signal_listeners(lone), 0, "every hook dropped")
+	lone.emit_signal("power_changed", 0, 0)
+	lone.emit_signal("refresh_rates_changed")
+	other.release()
+	lone.free()
+
+
+func test_freeing_the_facade_disconnects_plugin_signals() -> void:
+	var lone: Object = FakePlugin.new()
+	var facade := make_facade()
+	facade.set_backend(DevicePowerAndroidPluginBackend.new(lone))
+	assert_eq(_signal_listeners(lone), 4, "connected")
+	facade.free()
+	assert_eq(_signal_listeners(lone), 0, "facade released the backend")
+	lone.emit_signal("power_changed", 0, 0)
+	lone.free()
+
+
+func _signal_listeners(target: Object) -> int:
+	var count: int = target.get_signal_connection_list(&"power_changed").size()
+	count += target.get_signal_connection_list(&"game_mode_changed").size()
+	count += target.get_signal_connection_list(&"thermal_status_changed").size()
+	count += target.get_signal_connection_list(&"refresh_rates_changed").size()
+	return count
 
 
 func test_the_facade_asks_the_plugin_to_refresh_on_focus() -> void:

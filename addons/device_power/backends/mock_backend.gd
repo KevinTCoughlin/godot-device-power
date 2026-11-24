@@ -27,6 +27,10 @@ func get_backend_name() -> String:
 	return "mock"
 
 
+func can_vote_frame_rate() -> bool:
+	return true
+
+
 func pushes_changes() -> bool:
 	return push
 

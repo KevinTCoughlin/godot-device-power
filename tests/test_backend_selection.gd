@@ -14,9 +14,17 @@ func _lookup(singletons: Dictionary) -> Callable:
 	return func(singleton_name: String) -> Object: return singletons.get(singleton_name)
 
 
-func test_desktop_gets_the_null_backend() -> void:
-	var backend: DevicePowerBackend = Facade.select_backend("Linux", _lookup({}))
-	assert_eq(backend.get_backend_name(), "null")
+func test_linux_reads_sysfs_and_unbridged_platforms_stay_null() -> void:
+	var linux: DevicePowerBackend = Facade.select_backend("Linux", _lookup({}))
+	assert_eq(linux.get_backend_name(), "linux")
+	for os_name: String in ["Web", "FreeBSD"]:
+		var backend: DevicePowerBackend = Facade.select_backend(os_name, _lookup({}))
+		assert_eq(backend.get_backend_name(), "null", os_name)
+	# Windows, macOS and iOS use the GDExtension only when this process can
+	# read them. The Linux binary reports unsupported, so they stay null here.
+	for os_name: String in ["Windows", "macOS", "iOS"]:
+		var desktop: DevicePowerBackend = Facade.select_backend(os_name, _lookup({}))
+		assert_eq(desktop.get_backend_name(), "null", os_name)
 
 
 func test_android_prefers_the_plugin() -> void:
@@ -61,6 +69,16 @@ func test_an_incompatible_plugin_falls_back_to_the_runtime() -> void:
 	)
 	assert_eq(backend.get_backend_name(), "android")
 	plugin.free()
+
+
+func test_an_unknown_os_or_a_missing_lookup_stays_unknown() -> void:
+	for os_name: String in ["", "Steam", "UWP"]:
+		var backend: DevicePowerBackend = Facade.select_backend(os_name, _lookup({}))
+		assert_eq(backend.get_backend_name(), "null", os_name)
+		assert_eq(backend.get_power_source(), -1, os_name)
+		assert_null(backend.is_power_saver_enabled(), os_name)
+	var blind: DevicePowerBackend = Facade.select_backend("Android", Callable())
+	assert_eq(blind.get_backend_name(), "null", "Android with no lookup")
 
 
 func test_a_non_object_singleton_is_ignored() -> void:

@@ -57,6 +57,20 @@ func test_bad_native_values_are_unknown() -> void:
 	assert_null(backend.is_power_saver_enabled(), "null stays unknown")
 
 
+func test_freeing_the_facade_releases_the_native_object() -> void:
+	var fake: RefCounted = Fake.new()
+	fake.power_source = 0
+	fake.power_saver = true
+	var backend := Backend.new(fake, func() -> float: return 60.0)
+	var facade := make_facade()
+	facade.set_backend(backend)
+	assert_eq(backend.get_power_source(), 0, "battery before shutdown")
+	facade.free()
+	assert_eq(backend.get_power_source(), -1, "the extension object was dropped")
+	assert_null(backend.is_power_saver_enabled(), "saver is unknown after release")
+	backend.release()
+
+
 func test_backend_name_follows_the_os() -> void:
 	var backend := Backend.new(Fake.new(), func() -> float: return -1.0)
 	var expected := "native"

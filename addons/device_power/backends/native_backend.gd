@@ -26,6 +26,12 @@ func _init(native: Object, read_refresh_rate: Callable = Callable()) -> void:
 	_read_refresh_rate = read_refresh_rate if read_refresh_rate.is_valid() else _screen_refresh_rate
 
 
+## Drops the extension object. [DevicePower] calls this before it frees the
+## backend, on shutdown and when a backend is replaced.
+func release() -> void:
+	_native = null
+
+
 func get_backend_name() -> String:
 	match OS.get_name():
 		"Windows":
@@ -53,6 +59,8 @@ static func from_runtime() -> DevicePowerNativeBackend:
 
 
 func get_power_source() -> int:
+	if not is_instance_valid(_native):
+		return -1
 	var source: Variant = _native.call(&"get_power_source")
 	if source is int and source >= -1 and source <= 1:
 		return source
@@ -60,6 +68,8 @@ func get_power_source() -> int:
 
 
 func is_power_saver_enabled() -> Variant:
+	if not is_instance_valid(_native):
+		return null
 	var saver: Variant = _native.call(&"is_power_saver_enabled")
 	if saver is bool:
 		return saver
