@@ -29,9 +29,9 @@ Before 1.0 the public API may change in a minor release.
 
 ### Fixed
 
-- Shutting down or freeing `DevicePower` disconnects the backend. The
-  Android plugin backend also disconnects the engine singleton's signals
-  when it is freed, so a reload does not call into a freed object.
+- Shutting down or freeing `DevicePower` releases the backend first. The
+  Android plugin backend disconnects the engine singleton's signals in
+  `release()`, so a reload does not call into a freed object.
 - `select_backend()` treats a missing Android singleton lookup as the null
   backend. An unknown OS name was already the null backend.
 - The display vote is sent after `changed`. A handler that applies
@@ -47,6 +47,8 @@ Before 1.0 the public API may change in a minor release.
 
 ### Changed
 
+- The README has a platform support matrix. Unknown is a normal result on
+  every target the addon does not read, not an error.
 - The non-blocking Godot 4.8 preview in CI (headless suite and the
   `godot-lib` AAR compile check) now runs against 4.8-beta5 (commit
   `a661dfdbc`) instead of 4.8-beta4.

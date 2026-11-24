@@ -339,6 +339,26 @@ Battery saver, game mode and thermal status are unknown on purpose. A raw
 zone temperature is not Android's thermal enum, and guessing one would cap
 frames on a number that means something different per device.
 
+## Platform support
+
+Unknown is a normal result. It imposes no frame cap, and it is not an error.
+A missing file, a missing Android bridge, or a platform Godot 4 cannot ask
+all read the same way.
+
+| Platform | Power source | Battery saver | Game mode | Thermal | Refresh rates | Frame-rate vote |
+| --- | --- | --- | --- | --- | --- | --- |
+| Android, Gradle plugin | read | read | API 31+ | API 29+ | modes at the current resolution | `Surface.setFrameRate`, API 31+ |
+| Android, no plugin | read, polled | read, polled | API 31+, on focus | API 29+, polled | same, polled | same |
+| Linux, including Steam Deck | sysfs, polled | unknown | unknown | unknown | current rate only | not made |
+| Windows, macOS, iOS, web | unknown | unknown | unknown | unknown | not read | not made |
+
+On Android, a failed read or an older API level is unknown for that one
+value. The rest still work. If the plugin is missing or speaks another API,
+the addon uses the `JavaClassWrapper` backend, then the null backend. Linux
+with no `power_supply` class (a desktop, or a sandbox that hides sysfs) is
+unknown and stays uncapped. Windows, macOS and iOS stay on the null backend:
+Godot 4 has no power API there, and GDScript has no portable call to add.
+
 ## Backends
 
 | Backend | When | How |
@@ -348,6 +368,11 @@ frames on a number that means something different per device.
 | `DevicePowerLinuxBackend` | Linux, including Steam Deck | sysfs `power_supply`, polled; current refresh rate only. No saver, game mode, thermal status or frame-rate vote. |
 | `DevicePowerNullBackend` | Windows, macOS, iOS, web | Everything unknown; the policy imposes nothing. |
 | `DevicePowerMockBackend` | tests | Fields you set. |
+
+`release()` is part of the backend contract. The facade calls it before it
+drops a backend, on shutdown and when a backend is replaced. A backend that
+subscribed to anything overrides it. The Android plugin backend disconnects
+the engine singleton there, so a reload does not call into a freed object.
 
 The plugin (`android-plugin/`, Kotlin, Godot Android plugin v2) registers a
 broadcast receiver for `ACTION_BATTERY_CHANGED` and
