@@ -62,6 +62,9 @@ Before 1.0 the public API may change in a minor release.
   updates the rate list immediately, instead of waiting for the next signal
   or the 30 s safety poll. Callbacks for other displays are ignored, and a
   failed read keeps the previous list.
+- The demo scales its interface by screen density on phones and tablets. On
+  a Pixel 10 it was drawn at desktop pixel size: text too small to read and
+  a toggle too small to tap.
 
 ### Changed
 

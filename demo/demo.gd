@@ -15,6 +15,7 @@ extends Control
 ## frame rate vote follows.
 
 const MENU_FPS := 30
+const MOBILE_BASE_DPI := 160.0
 
 var _menu := false
 
@@ -24,6 +25,14 @@ var _menu := false
 
 
 func _ready() -> void:
+	# The scene is laid out in pixels. A phone packs about two and a half of
+	# them into the space of one desktop pixel, which leaves the text too
+	# small to read and the toggle too small to hit, so scale it up there.
+	# 160 dpi is Android's baseline density, the one a pixel layout assumes.
+	if OS.has_feature("mobile"):
+		get_window().content_scale_factor = maxf(
+			1.0, DisplayServer.screen_get_dpi() / MOBILE_BASE_DPI
+		)
 	DevicePower.changed.connect(_on_changed)
 	%MenuButton.toggled.connect(_on_menu_toggled)
 	%RefreshButton.pressed.connect(DevicePower.refresh)
