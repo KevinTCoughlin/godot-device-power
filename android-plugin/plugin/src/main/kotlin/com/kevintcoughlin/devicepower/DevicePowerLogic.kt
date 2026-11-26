@@ -143,6 +143,36 @@ object DisplayEvents {
     }
 }
 
+/**
+ * Which display events the plugin subscribes to. Kept free of Android types
+ * so the JVM tests can run it. The numbers are
+ * [android.hardware.display.DisplayManager]'s `EVENT_TYPE_*` values (API 36).
+ *
+ * The two-argument `registerDisplayListener` delivers added, removed and
+ * changed. From API 36 a refresh-rate change is no longer a "changed" event:
+ * it is [REFRESH_RATE], and a listener that does not ask for it never sees a
+ * Smooth Display switch. Display state is left out: the panel turning on or
+ * off does not change the rates the cap is paced to. A callback that does
+ * arrive still publishes only when that list changed, so a brightness change
+ * cannot wipe it.
+ */
+object DisplaySubscription {
+    /** `registerDisplayListener(Executor, long, DisplayListener)` arrived here. */
+    const val EXPLICIT_SDK = 36
+
+    const val ADDED = 1L
+    const val REMOVED = 2L
+    const val CHANGED = 4L
+    const val REFRESH_RATE = 8L
+    /** Not subscribed: the panel turning on or off does not change the rate list. */
+    const val STATE = 16L
+
+    fun usesExplicitFilter(sdkInt: Int): Boolean = sdkInt >= EXPLICIT_SDK
+
+    /** Added, removed, changed, and refresh rate. Not [STATE]. */
+    fun explicitMask(): Long = ADDED or REMOVED or CHANGED or REFRESH_RATE
+}
+
 object FrameRateVote {
     /** Above any panel's rate; a larger request is a bug in the caller. */
     const val MAX_RATE = 1000f
