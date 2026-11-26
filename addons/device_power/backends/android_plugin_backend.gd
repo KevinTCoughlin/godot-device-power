@@ -8,10 +8,12 @@ extends DevicePowerBackend
 ## plugin this addon's export plugin bundles into a Gradle build.
 ##
 ## The plugin listens for the platform's own change notifications (the
-## battery and battery saver broadcasts, the thermal status listener) and
-## re-reads the game mode on resume, so nothing is polled: its signals become
-## [signal DevicePowerBackend.changed]. Getters return the plugin's last
-## read, which costs no binder call.
+## battery and battery saver broadcasts, the thermal status listener, and a
+## display listener while the app is resumed) and re-reads the game mode on
+## resume, so nothing is polled: its signals become
+## [signal DevicePowerBackend.changed]. The display listener is removed on
+## pause and on destroy. Getters return the plugin's last read, which costs
+## no binder call.
 ##
 ## [b]Every value is checked.[/b] In a release export a script error makes
 ## the function return [code]null[/code] with no message, and a

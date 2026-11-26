@@ -151,6 +151,35 @@ class RefreshRatesTest {
         assertEquals(0, RefreshRates.atResolution(null, listOf(mode(1, 1, 60f))).size)
 }
 
+class DisplaySubscriptionTest {
+    @Test
+    fun explicitFilterStartsAtApi36() {
+        assertFalse(DisplaySubscription.usesExplicitFilter(35))
+        assertFalse(DisplaySubscription.usesExplicitFilter(DisplaySubscription.EXPLICIT_SDK - 1))
+        assertTrue(DisplaySubscription.usesExplicitFilter(DisplaySubscription.EXPLICIT_SDK))
+        assertTrue(DisplaySubscription.usesExplicitFilter(36))
+    }
+
+    @Test
+    fun explicitMaskIncludesRefreshRateAndNotDisplayState() {
+        val mask = DisplaySubscription.explicitMask()
+        assertEquals(
+            DisplaySubscription.ADDED or DisplaySubscription.REMOVED or
+                DisplaySubscription.CHANGED or DisplaySubscription.REFRESH_RATE,
+            mask,
+        )
+        assertTrue((mask and DisplaySubscription.REFRESH_RATE) != 0L)
+        assertEquals(0L, mask and DisplaySubscription.STATE)
+        // API 36 DisplayManager.EVENT_TYPE_* values. The plugin passes those
+        // constants and checks they still equal this mask.
+        assertEquals(1L, DisplaySubscription.ADDED)
+        assertEquals(2L, DisplaySubscription.REMOVED)
+        assertEquals(4L, DisplaySubscription.CHANGED)
+        assertEquals(8L, DisplaySubscription.REFRESH_RATE)
+        assertEquals(16L, DisplaySubscription.STATE)
+    }
+}
+
 class DisplayEventsTest {
     @Test
     fun aCallbackForAnotherDisplayIsIgnored() {

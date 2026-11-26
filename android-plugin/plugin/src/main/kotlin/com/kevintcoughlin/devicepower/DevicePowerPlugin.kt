@@ -60,7 +60,10 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
     @Volatile
     private var surfaceHolder: SurfaceHolder? = null
 
-    /** Main thread. [DisplayManager.DisplayListener], registered while resumed. */
+    /**
+     * Main thread. [DisplayManager.DisplayListener], registered in [start]
+     * and removed in [stop]. Pause and destroy both call [stop].
+     */
     private var displayListener: DisplayManager.DisplayListener? = null
 
     private val voteLock = Any()
@@ -317,11 +320,12 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
 
     /**
      * Re-reads refresh rates when the display we are actually on changes
-     * mode. Registered on [mainHandler], so this runs on the main thread.
-     * [DisplayEvents.ratesAfterEvent] drops callbacks for other displays and
-     * failed reads; [update] then emits only when the list changed, which is
-     * how a refresh-rate switch reaches the cap without waiting for the
-     * safety poll.
+     * mode or refresh rate. Runs on the main thread: the explicit
+     * registration uses the main executor, and the legacy one uses
+     * [mainHandler]. [DisplayEvents.ratesAfterEvent] drops callbacks for
+     * other displays and failed reads; [update] then emits only when the
+     * list changed, which is how a refresh-rate switch reaches the cap
+     * without waiting for the safety poll.
      */
     private fun onDisplayEvent(displayId: Int) {
         val next = DisplayEvents.ratesAfterEvent(displayId, display()?.displayId) {
@@ -341,8 +345,48 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
             override fun onDisplayChanged(displayId: Int) = onDisplayEvent(displayId)
         }
         try {
-            // API 17, below minSdk. The handler is the main looper, so the
-            // callback stays on the thread that owns the snapshot.
+            if (Build.VERSION.SDK_INT >= DisplaySubscription.EXPLICIT_SDK) {
+                // The two-argument registration no longer includes refresh
+                // rate. Ask for it, plus added, removed and changed, so a
+                // Smooth Display switch or a resolution change re-reads the
+                // list. The mask is DisplaySubscription.explicitMask(); the
+                // check keeps that function on the platform's bits.
+                val mask =
+                    DisplayManager.EVENT_TYPE_DISPLAY_ADDED or
+                        DisplayManager.EVENT_TYPE_DISPLAY_REMOVED or
+                        DisplayManager.EVENT_TYPE_DISPLAY_CHANGED or
+                        DisplayManager.EVENT_TYPE_DISPLAY_REFRESH_RATE
+                check(mask == DisplaySubscription.explicitMask()) {
+                    "DisplaySubscription.explicitMask() drifted from DisplayManager.EVENT_TYPE_*"
+                }
+                manager.registerDisplayListener(activityContext().mainExecutor, mask, listener)
+            } else {
+                // API 17, below minSdk. The handler is the main looper, so
+                // the callback stays on the thread that owns the snapshot.
+                // Before API 36 a refresh-rate change arrives as "changed".
+                manager.registerDisplayListener(listener, mainHandler)
+            }
+            displayListener = listener
+        } catch (e: RuntimeException) {
+            if (Build.VERSION.SDK_INT >= DisplaySubscription.EXPLICIT_SDK && displayListener == null) {
+                Log.w(TAG, "Explicit display listener registration failed; using the legacy one", e)
+                registerLegacyDisplayListener(manager, listener)
+            } else {
+                Log.w(TAG, "Could not register the display listener", e)
+            }
+        }
+    }
+
+    /**
+     * The API 17 registration, used below API 36 and when the explicit
+     * filter throws. Before API 36 a refresh-rate change arrives as
+     * "changed". On API 36 it does not, so this is only the fallback.
+     */
+    private fun registerLegacyDisplayListener(
+        manager: DisplayManager,
+        listener: DisplayManager.DisplayListener,
+    ) {
+        try {
             manager.registerDisplayListener(listener, mainHandler)
             displayListener = listener
         } catch (e: RuntimeException) {
@@ -350,6 +394,7 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
         }
     }
 
+    /** [stop] runs this on pause and again on destroy. Safe when already removed. */
     private fun unregisterDisplayListener() {
         val listener = displayListener ?: return
         try {
