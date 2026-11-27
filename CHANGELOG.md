@@ -38,6 +38,10 @@ Before 1.0 the public API may change in a minor release.
 
 ### Fixed
 
+- Linux ignores power supplies whose `scope` is `Device`. A wireless mouse,
+  headset or controller battery was treated as the computer's: a desktop
+  with only that supply was held to the battery cap, and a peripheral
+  reporting `Charging` could leave a laptop on battery uncapped.
 - A failed Android refresh-rate read keeps the previous list. Resume, a
   battery-saver broadcast and `refresh()` published an empty list when the
   display was not ready or the read threw, which dropped the peak to 0 and
@@ -75,6 +79,10 @@ Before 1.0 the public API may change in a minor release.
 
 ### Changed
 
+- The README's Godot 4.8 section names beta 5 as the CI lane. It had still
+  said, in the present tense, that CI runs beta 2. The demo comment and the
+  editor plugin description say that Windows reads power through the
+  GDExtension when that library is loaded.
 - The README platform matrix covers Android, Linux, the Windows GDExtension,
   and the platforms that stay unknown (macOS and iOS until their scaffold is
   built, the web, and Windows when the extension is missing). Unknown is a
