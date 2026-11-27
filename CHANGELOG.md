@@ -71,6 +71,10 @@ Before 1.0 the public API may change in a minor release.
 
 ### Changed
 
+- The README's Godot 4.8 section names beta 5 as the CI lane. It had still
+  said, in the present tense, that CI runs beta 2. The demo comment and the
+  editor plugin description say that Windows reads power through the
+  GDExtension when that library is loaded.
 - The README platform matrix covers Android, Linux, the Windows GDExtension,
   and the platforms that stay unknown (macOS and iOS until their scaffold is
   built, the web, and Windows when the extension is missing). Unknown is a
