@@ -295,7 +295,9 @@ Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab
   re-reads them when that display changes. On Android 16 it also subscribes
   to `EVENT_TYPE_DISPLAY_REFRESH_RATE`, which the older registration does not
   deliver, so a refresh-rate switch reaches the cap without waiting for the
-  30 s safety poll. Only what apps are told counts: a
+  30 s safety poll. A failed read, including on resume and when battery saver
+  changes, keeps the previous list: publishing none would drop the peak to 0
+  and an uncapped game would withdraw its vote. Only what apps are told counts: a
   Galaxy A16's `dumpsys display` lists 60 as an alternative of its single
   90 Hz mode, but `Display.Mode.getAlternativeRefreshRates()` and
   `Display.getSupportedRefreshRates()` both give `[90]`. It is treated as fixed

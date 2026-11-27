@@ -149,6 +149,21 @@ class RefreshRatesTest {
     @Test
     fun noCurrentModeIsUnknown() =
         assertEquals(0, RefreshRates.atResolution(null, listOf(mode(1, 1, 60f))).size)
+
+    @Test
+    fun aFailedReadKeepsThePreviousRates() {
+        assertEquals(listOf(60f, 120f), RefreshRates.ratesAfterRead(null, listOf(60f, 120f)))
+    }
+
+    @Test
+    fun anEmptyReadReplacesThePreviousRates() {
+        assertEquals(emptyList<Float>(), RefreshRates.ratesAfterRead(FloatArray(0), listOf(60f, 120f)))
+    }
+
+    @Test
+    fun aSuccessfulReadReplacesThePreviousRates() {
+        assertEquals(listOf(90f), RefreshRates.ratesAfterRead(floatArrayOf(90f), listOf(60f)))
+    }
 }
 
 class DisplaySubscriptionTest {

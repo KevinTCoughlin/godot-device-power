@@ -121,6 +121,16 @@ object RefreshRates {
         }
         return rates.sorted().toFloatArray()
     }
+
+    /**
+     * [read] is a successful read, or null when the display could not be
+     * read. Null keeps [previous]. Resume and a battery-saver broadcast must
+     * not replace a known list with none: the peak would drop to 0 and an
+     * uncapped game would withdraw its frame-rate vote. An empty array is a
+     * real reading and replaces [previous].
+     */
+    fun ratesAfterRead(read: FloatArray?, previous: List<Float>): List<Float> =
+        read?.toList() ?: previous
 }
 
 /**

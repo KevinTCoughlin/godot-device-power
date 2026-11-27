@@ -38,6 +38,10 @@ Before 1.0 the public API may change in a minor release.
 
 ### Fixed
 
+- A failed Android refresh-rate read keeps the previous list. Resume, a
+  battery-saver broadcast and `refresh()` published an empty list when the
+  display was not ready or the read threw, which dropped the peak to 0 and
+  made an uncapped game withdraw its frame-rate vote.
 - Shutting down or freeing `DevicePower` releases the backend first. The
   Android plugin backend disconnects the engine singleton's signals in
   `release()`, and the native backend drops the GDExtension object, so a
