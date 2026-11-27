@@ -38,6 +38,10 @@ Before 1.0 the public API may change in a minor release.
 
 ### Fixed
 
+- Linux ignores power supplies whose `scope` is `Device`. A wireless mouse,
+  headset or controller battery was treated as the computer's: a desktop
+  with only that supply was held to the battery cap, and a peripheral
+  reporting `Charging` could leave a laptop on battery uncapped.
 - Shutting down or freeing `DevicePower` releases the backend first. The
   Android plugin backend disconnects the engine singleton's signals in
   `release()`, and the native backend drops the GDExtension object, so a
