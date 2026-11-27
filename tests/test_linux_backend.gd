@@ -53,6 +53,31 @@ func test_power_source_from_supplies() -> void:
 		],
 		[{"X": _adapter("Unknown", "1")}, -1, "an unknown type is not an adapter"],
 		[{"nope": "not a supply", "BAT1": _battery("Discharging")}, 0, "garbage entry ignored"],
+		[{"MOUSE": _device("Discharging")}, -1, "only a peripheral battery"],
+		[{"MOUSE": _device("Full")}, -1, "a full peripheral battery"],
+		[{"MOUSE": _device("Charging")}, -1, "a charging peripheral is not mains"],
+		[
+			{
+				"MOUSE": _device("Charging"),
+				"AC": _adapter("Mains", "0"),
+				"BAT1": _battery("Discharging"),
+			},
+			0,
+			"a charging mouse does not uncap a laptop on battery",
+		],
+		[
+			{"MOUSE": _device("Discharging"), "BAT1": _battery("Discharging")},
+			0,
+			"the system battery still counts beside a mouse",
+		],
+		[
+			{"MOUSE": _device("Discharging"), "AC": _adapter("Mains", "1")},
+			1,
+			"mains still counts beside a mouse",
+		],
+		[{"BAT1": _scoped("Battery", "Discharging", "System")}, 0, "explicit system scope"],
+		[{"BAT1": _scoped("Battery", "Discharging", "Unknown")}, 0, "unknown scope still counts"],
+		[{"DOCK": _scoped("Mains", "", "Device", "1")}, -1, "a device-scoped adapter is not mains"],
 	]
 	for row: Array in cases:
 		assert_eq(Backend.power_source_from_supplies(row[0]), row[1], row[2])
@@ -125,6 +150,38 @@ func test_a_fixture_tree_is_reread_including_through_symlinks() -> void:
 	_delete_tree(base)
 
 
+func test_a_device_scoped_supply_on_disk_is_not_the_computer() -> void:
+	# Same layout as sysfs: the files live in real/, and ps/ holds symlinks.
+	var base := "/tmp/device-power-sysfs-scope-%d" % Time.get_ticks_usec()
+	var real := base.path_join("real")
+	var ps := base.path_join("ps")
+	_write(real.path_join("hidpp_battery_0").path_join("type"), "Battery\n")
+	_write(real.path_join("hidpp_battery_0").path_join("status"), "Charging\n")
+	_write(real.path_join("hidpp_battery_0").path_join("scope"), "Device\n")
+	_write(real.path_join("BAT1").path_join("type"), "Battery\n")
+	_write(real.path_join("BAT1").path_join("status"), "Discharging\n")
+	_write(real.path_join("AC").path_join("type"), "Mains\n")
+	_write(real.path_join("AC").path_join("online"), "0\n")
+	DirAccess.make_dir_recursive_absolute(ps)
+	for supply_name: String in ["hidpp_battery_0", "BAT1", "AC"]:
+		var target := real.path_join(supply_name)
+		var linked: int = OS.execute("/bin/ln", ["-s", target, ps.path_join(supply_name)])
+		if linked != 0:
+			fail("could not symlink %s" % supply_name)
+	var backend: DevicePowerLinuxBackend = Backend.new(ps, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), 0, "on battery beside a charging mouse")
+	var only := base.path_join("only")
+	DirAccess.make_dir_recursive_absolute(only)
+	var linked_only: int = OS.execute(
+		"/bin/ln", ["-s", real.path_join("hidpp_battery_0"), only.path_join("hidpp_battery_0")]
+	)
+	if linked_only != 0:
+		fail("could not symlink the peripheral on its own")
+	var desktop: DevicePowerLinuxBackend = Backend.new(only, func() -> float: return 60.0)
+	assert_eq(desktop.get_power_source(), -1, "only a peripheral battery is unknown")
+	_delete_tree(base)
+
+
 func test_a_zero_length_special_file_is_still_read() -> void:
 	# proc files report length 0. get_file_as_string() returns "" for them.
 	var path := "/proc/self/comm"
@@ -144,6 +201,17 @@ func _battery(status: String, present: String = "") -> Dictionary:
 
 func _pack(type: String, status: String, online: String = "", present: String = "") -> Dictionary:
 	return {"type": type, "status": status, "online": online, "present": present}
+
+
+## A peripheral supply: scope Device, as hidpp and other device batteries report.
+func _device(status: String) -> Dictionary:
+	return _scoped("Battery", status, "Device")
+
+
+func _scoped(type: String, status: String, scope: String, online: String = "") -> Dictionary:
+	var supply := _pack(type, status, online)
+	supply["scope"] = scope
+	return supply
 
 
 func _adapter(type: String, online: String) -> Dictionary:

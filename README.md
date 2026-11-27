@@ -331,6 +331,13 @@ parsed except the fixed `type`, `status`, `online` and `present` files.
 - No supply, or a battery status of `Unknown` with no adapter, is unknown.
   A desktop with an empty `power_supply` class is unknown and stays uncapped.
   A missing directory is unknown and does not log an error.
+- A supply whose `scope` is `Device` powers a peripheral, not the computer
+  (a wireless mouse, a headset, a controller). It is ignored, as the kernel's
+  `power_supply_is_system_supplied()` ignores it. A desktop whose only
+  supplies are those stays unknown and uncapped, and a peripheral that
+  reports `Charging` does not make a laptop on battery look plugged in.
+  No `scope` file means a system supply, which is how a laptop battery and
+  a mains adapter usually appear.
 
 The backend is polled (`poll_interval`, 2 s), same as the Android fallback.
 Plugging in is noticed within that, not by a kernel notification.

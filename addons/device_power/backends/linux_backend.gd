@@ -22,6 +22,15 @@ extends DevicePowerBackend
 ## No supply, a supply that cannot be read, or a status of [code]Unknown[/code]
 ## with no adapter is unknown, and the policy imposes nothing.
 ##
+## [b]Peripherals are not the computer.[/b] A supply whose [code]scope[/code]
+## is [code]Device[/code] powers a mouse, a headset or a controller. The
+## kernel's own [code]power_supply_is_system_supplied()[/code] ignores those,
+## and so does this. Counted in, a desktop whose only battery is a wireless
+## mouse is capped as if the machine were unplugged, and a peripheral that
+## reports [code]Charging[/code] makes a laptop on battery look plugged in.
+## No [code]scope[/code] file means a system supply: that is how a laptop
+## battery and a mains adapter usually appear.
+##
 ## Battery saver, game mode and thermal status are not here. Mapping a raw
 ## zone temperature onto Android's thermal enum would be a guess, so heat
 ## imposes nothing. The frame-rate vote is not made: nothing portable asks a
@@ -85,9 +94,11 @@ func get_refresh_rates() -> PackedFloat32Array:
 
 ## The [enum DevicePower.PowerSource] value for supplies already read.
 ## Each value is a Dictionary with string fields [code]type[/code],
-## [code]status[/code], [code]online[/code] and [code]present[/code], as the
-## sysfs files read after stripping. A missing file is an empty string. A
-## [code]present[/code] of [code]0[/code] drops that supply.
+## [code]status[/code], [code]online[/code], [code]present[/code] and
+## [code]scope[/code], as the sysfs files read after stripping. A missing
+## file is an empty string. A
+## [code]present[/code] of [code]0[/code] drops that supply, and so does a
+## [code]scope[/code] of [code]Device[/code] (a peripheral, not the machine).
 static func power_source_from_supplies(supplies: Dictionary) -> int:
 	var adapter_online := false
 	var adapter_present := false
@@ -98,7 +109,9 @@ static func power_source_from_supplies(supplies: Dictionary) -> int:
 		if not raw is Dictionary:
 			continue
 		var supply: Dictionary = raw
-		if _field(supply, "present") == "0":
+		# scope=Device is a peripheral battery (hidpp_battery_0 and the like).
+		# The kernel does not treat it as the machine's supply.
+		if _field(supply, "scope") == "Device" or _field(supply, "present") == "0":
 			continue
 		var type := _field(supply, "type")
 		var status := _field(supply, "status")
@@ -141,6 +154,7 @@ static func _read_supplies(root: String) -> Dictionary:
 			"status": _read_value(base.path_join("status")),
 			"online": _read_value(base.path_join("online")),
 			"present": _read_value(base.path_join("present")),
+			"scope": _read_value(base.path_join("scope")),
 		}
 	return supplies
 
