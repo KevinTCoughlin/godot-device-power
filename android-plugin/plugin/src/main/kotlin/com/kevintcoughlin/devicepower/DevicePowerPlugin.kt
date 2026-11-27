@@ -42,7 +42,9 @@ import org.godotengine.godot.plugin.UsedByGodot
  * - Signals are queued to Godot's thread by [emitSignal].
  *
  * Every platform call is wrapped: a failure reads as "unknown", never as a
- * guess and never as an exception into the engine.
+ * guess and never as an exception into the engine. A failed refresh-rate
+ * read keeps the previous list instead. Publishing none would drop the peak
+ * to 0 and an uncapped game would withdraw its frame-rate vote.
  */
 class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
 
@@ -303,12 +305,16 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
             powerSaver = TriState.of(saver),
             gameMode = GameModes.normalize(gameMode, sdkInt),
             thermalStatus = ThermalStatus.normalize(thermal, sdkInt),
-            refreshRates = (guarded("refresh rates") { readRefreshRates() } ?: FloatArray(0)).toList(),
+            refreshRates = RefreshRates.ratesAfterRead(
+                guarded("refresh rates") { readRefreshRates() },
+                snapshot.refreshRates,
+            ),
         )
     }
 
-    private fun readRefreshRates(): FloatArray {
-        val display = display() ?: return FloatArray(0)
+    /** Null when there is no display. An empty array means the display was read and has no rates. */
+    private fun readRefreshRates(): FloatArray? {
+        val display = display() ?: return null
         fun spec(mode: Display.Mode) = DisplayModeSpec(
             width = mode.physicalWidth,
             height = mode.physicalHeight,
