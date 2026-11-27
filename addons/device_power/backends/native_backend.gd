@@ -11,7 +11,10 @@ extends DevicePowerBackend
 ## The extension is optional. If it is missing, built for another platform,
 ## or [method is_supported] is false, [method from_runtime] returns null and
 ## the facade keeps the null backend. A failed platform read is unknown, not
-## a guess.
+## a guess. Unlike the other backends it does not keep the last good value:
+## the extension reports a failed [code]GetSystemPowerStatus[/code] and the
+## AC line's own "unknown" as the same [code]-1[/code], so a failure cannot
+## be told from a reading here.
 ##
 ## Refresh rate is the current one from [DisplayServer], the same limit as
 ## Linux: other modes are invisible, and this addon cannot switch them. The

@@ -45,7 +45,9 @@ signal changed
 
 ## Where the power comes from.
 enum PowerSource {
-	UNKNOWN = -1,  ## No answer: no bridge on this platform, or the read failed.
+	## No answer: no bridge on this platform, or no read has succeeded yet. A
+	## read that fails after a good one keeps that answer.
+	UNKNOWN = -1,
 	BATTERY = 0,  ## Running on the battery.
 	## On a charger, USB, a dock or wireless charging, whether or not it is
 	## charging right now.
@@ -63,7 +65,9 @@ enum GameMode {
 
 ## Android [code]PowerManager.THERMAL_STATUS_*[/code], in Android's numbering.
 enum ThermalStatus {
-	UNKNOWN = -1,  ## No answer: before Android 10, not Android, or the read failed.
+	## No answer: before Android 10, not Android, or no read has succeeded
+	## yet. A read that fails after a good one keeps that answer.
+	UNKNOWN = -1,
 	NONE = 0,  ## Not under thermal pressure.
 	LIGHT = 1,  ## Light throttling, without noticeable impact on the experience.
 	MODERATE = 2,  ## Moderate throttling, with some impact.

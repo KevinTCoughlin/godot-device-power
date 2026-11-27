@@ -6,7 +6,11 @@ extends RefCounted
 
 ## Backend contract used by the [code]DevicePower[/code] facade.
 ##
-## Every read has an honest default meaning "unknown". Concrete backends are
+## Every read has an honest default meaning "unknown". A read that fails
+## after a good one returns the last good value instead, so a transient
+## platform error does not lift a battery or heat cap mid-session; a read
+## that has never succeeded is unknown. A real change, such as a battery
+## that is gone, is a reading, not a failure. Concrete backends are
 ## [DevicePowerAndroidPluginBackend], [DevicePowerAndroidBackend],
 ## [DevicePowerLinuxBackend], [DevicePowerNativeBackend],
 ## [DevicePowerNullBackend] and [DevicePowerMockBackend].

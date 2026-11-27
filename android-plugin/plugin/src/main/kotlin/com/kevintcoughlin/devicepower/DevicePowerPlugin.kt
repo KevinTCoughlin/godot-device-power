@@ -41,10 +41,12 @@ import org.godotengine.godot.plugin.UsedByGodot
  *   under [voteLock], so it can say whether the vote was made.
  * - Signals are queued to Godot's thread by [emitSignal].
  *
- * Every platform call is wrapped: a failure reads as "unknown", never as a
- * guess and never as an exception into the engine. A failed refresh-rate
- * read keeps the previous list instead. Publishing none would drop the peak
- * to 0 and an uncapped game would withdraw its frame-rate vote.
+ * Every platform call is wrapped: a failure is never a guess and never an
+ * exception into the engine. A failed read keeps the value from the last
+ * good one, and is "unknown" when there has been none. Dropping a known
+ * power source or thermal status would lift a battery or heat cap
+ * mid-session, and publishing no refresh rates would drop the peak to 0 so
+ * an uncapped game withdraws its frame-rate vote.
  */
 class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
 
@@ -80,7 +82,7 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
                 // Fires on every level, voltage and temperature tick: only the
                 // plug state matters here, so skip the full read's binder calls.
                 val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
-                update(snapshot.copy(powerSource = PowerSource.fromPlugged(plugged)))
+                update(snapshot.copy(powerSource = PowerSource.afterRead(plugged, snapshot.powerSource)))
             } else {
                 update(read(stickyBattery = null))
             }
@@ -284,14 +286,15 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
     /**
      * Reads everything. [stickyBattery] is an ACTION_BATTERY_CHANGED intent
      * already in hand; without one the sticky broadcast is fetched with a
-     * null receiver, which registers nothing.
+     * null receiver, which registers nothing. A part that fails keeps its
+     * value from [snapshot] (see the `afterRead` functions).
      */
     private fun read(stickyBattery: Intent?): PowerSnapshot {
         val context = activityContext()
         val battery = stickyBattery ?: guarded("battery") {
             context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         }
-        val plugged = battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
+        val plugged = battery?.let { guarded("battery") { it.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) } }
         val power = powerManager()
         val saver = guarded("battery saver") { power?.isPowerSaveMode }
         val gameMode = if (Build.VERSION.SDK_INT >= 31) {
@@ -300,14 +303,15 @@ class DevicePowerPlugin(godot: Godot) : GodotPlugin(godot) {
             null
         }
         val thermal = if (Build.VERSION.SDK_INT >= 29) guarded("thermal status") { power?.currentThermalStatus } else null
+        val previous = snapshot
         return PowerSnapshot(
-            powerSource = PowerSource.fromPlugged(plugged),
-            powerSaver = TriState.of(saver),
-            gameMode = GameModes.normalize(gameMode, sdkInt),
-            thermalStatus = ThermalStatus.normalize(thermal, sdkInt),
+            powerSource = PowerSource.afterRead(plugged, previous.powerSource),
+            powerSaver = TriState.afterRead(saver, previous.powerSaver),
+            gameMode = GameModes.afterRead(gameMode, sdkInt, previous.gameMode),
+            thermalStatus = ThermalStatus.afterRead(thermal, sdkInt, previous.thermalStatus),
             refreshRates = RefreshRates.ratesAfterRead(
                 guarded("refresh rates") { readRefreshRates() },
-                snapshot.refreshRates,
+                previous.refreshRates,
             ),
         )
     }

@@ -334,6 +334,11 @@ files, and the name the parent device's `subsystem` link points at.
 - No supply, or a battery status of `Unknown` with no adapter, is unknown.
   A desktop with an empty `power_supply` class is unknown and stays uncapped.
   A missing directory is unknown and does not log an error.
+- A supply file that exists but cannot be opened or read, or a
+  `power_supply` directory that exists but cannot be listed, is a failed
+  read: the last answer stands (unknown if there was none). A supply that
+  disappears or reports `present` of `0` is a real change. A peripheral's
+  failed read does not count.
 - A supply whose `scope` is `Device` powers a peripheral, not the computer
   (a wireless mouse, a headset, a controller). It is ignored, as the kernel's
   `power_supply_is_system_supplied()` ignores it. A desktop whose only
@@ -378,8 +383,14 @@ all read the same way.
 | macOS, iOS | unknown until the Apple scaffold is built | unknown | unknown | unknown | not read | not made |
 | Web, or Windows without the extension | unknown | unknown | unknown | unknown | not read | not made |
 
-On Android, a failed read or an older API level is unknown for that one
-value. The rest still work. If the plugin is missing or speaks another API,
+On Android, an older API level is unknown for that one value, and so is a
+read that fails before any has succeeded. The rest still work. A read that
+fails after a good one keeps that value, on every backend that can tell a
+failure from a reading (both Android backends and Linux): a binder call or
+sysfs file that errors for a moment must not lift a battery or heat cap
+mid-session. There is no staleness bound; the next good read replaces it.
+The Windows extension reports a failed read and an unknown AC line as the
+same value, so there a failure is still unknown. If the plugin is missing or speaks another API,
 the addon uses the `JavaClassWrapper` backend, then the null backend. Linux
 with no `power_supply` class (a desktop, or a sandbox that hides sysfs) is
 unknown and stays uncapped. Windows without the GDExtension, macOS, iOS and

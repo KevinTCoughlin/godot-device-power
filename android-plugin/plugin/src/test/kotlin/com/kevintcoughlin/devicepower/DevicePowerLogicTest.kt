@@ -28,6 +28,22 @@ class PowerSourceTest {
         assertEquals(PowerSource.UNKNOWN, PowerSource.fromPlugged(-1))
         assertEquals(PowerSource.UNKNOWN, PowerSource.fromPlugged(null))
     }
+
+    @Test
+    fun aFailedReadKeepsThePreviousSource() {
+        assertEquals(PowerSource.BATTERY, PowerSource.afterRead(null, PowerSource.BATTERY))
+        assertEquals(PowerSource.EXTERNAL, PowerSource.afterRead(-1, PowerSource.EXTERNAL))
+    }
+
+    @Test
+    fun aFailedFirstReadIsUnknown() =
+        assertEquals(PowerSource.UNKNOWN, PowerSource.afterRead(null, PowerSnapshot().powerSource))
+
+    @Test
+    fun aSuccessfulReadReplacesThePreviousSource() {
+        assertEquals(PowerSource.EXTERNAL, PowerSource.afterRead(1, PowerSource.BATTERY))
+        assertEquals(PowerSource.BATTERY, PowerSource.afterRead(0, PowerSource.EXTERNAL))
+    }
 }
 
 class TriStateTest {
@@ -37,6 +53,16 @@ class TriStateTest {
         assertEquals(TriState.OFF, TriState.of(false))
         assertEquals(TriState.UNKNOWN, TriState.of(null))
     }
+
+    @Test
+    fun aFailedReadKeepsThePreviousValue() {
+        assertEquals(TriState.ON, TriState.afterRead(null, TriState.ON))
+        assertEquals(TriState.UNKNOWN, TriState.afterRead(null, PowerSnapshot().powerSaver))
+    }
+
+    @Test
+    fun aSuccessfulReadReplacesThePreviousValue() =
+        assertEquals(TriState.OFF, TriState.afterRead(false, TriState.ON))
 }
 
 class GameModesTest {
@@ -56,6 +82,21 @@ class GameModesTest {
         assertEquals(GameModes.UNSUPPORTED, GameModes.normalize(-1, 36))
         assertEquals(GameModes.UNSUPPORTED, GameModes.normalize(null, 36))
     }
+
+    @Test
+    fun aFailedReadKeepsThePreviousMode() {
+        assertEquals(3, GameModes.afterRead(null, 36, 3))
+        assertEquals(GameModes.UNSUPPORTED, GameModes.afterRead(null, 36, PowerSnapshot().gameMode))
+    }
+
+    @Test
+    fun aSuccessfulReadReplacesThePreviousMode() {
+        assertEquals(1, GameModes.afterRead(1, 36, 3))
+        assertEquals("an undocumented mode is a reading", GameModes.UNSUPPORTED, GameModes.afterRead(9, 36, 3))
+    }
+
+    @Test
+    fun nothingIsKeptBeforeApi31() = assertEquals(GameModes.UNSUPPORTED, GameModes.afterRead(null, 30, 3))
 }
 
 class ThermalStatusTest {
@@ -75,6 +116,23 @@ class ThermalStatusTest {
         assertEquals(ThermalStatus.UNKNOWN, ThermalStatus.normalize(-2, 36))
         assertEquals(ThermalStatus.UNKNOWN, ThermalStatus.normalize(null, 36))
     }
+
+    @Test
+    fun aFailedReadKeepsThePreviousStatus() =
+        assertEquals(3, ThermalStatus.afterRead(null, 36, 3))
+
+    @Test
+    fun aFailedFirstReadIsUnknown() =
+        assertEquals(ThermalStatus.UNKNOWN, ThermalStatus.afterRead(null, 36, PowerSnapshot().thermalStatus))
+
+    @Test
+    fun aSuccessfulReadReplacesThePreviousStatus() {
+        assertEquals(0, ThermalStatus.afterRead(0, 36, 3))
+        assertEquals("an undocumented status is a reading", ThermalStatus.UNKNOWN, ThermalStatus.afterRead(7, 36, 3))
+    }
+
+    @Test
+    fun nothingIsKeptBeforeApi29() = assertEquals(ThermalStatus.UNKNOWN, ThermalStatus.afterRead(null, 28, 3))
 }
 
 class RefreshRatesTest {
