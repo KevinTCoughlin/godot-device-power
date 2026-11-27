@@ -78,9 +78,63 @@ func test_power_source_from_supplies() -> void:
 		[{"BAT1": _scoped("Battery", "Discharging", "System")}, 0, "explicit system scope"],
 		[{"BAT1": _scoped("Battery", "Discharging", "Unknown")}, 0, "unknown scope still counts"],
 		[{"DOCK": _scoped("Mains", "", "Device", "1")}, -1, "a device-scoped adapter is not mains"],
+		# No scope at all: the parent bus or the driver's name gives it away.
+		[{"MOUSE": _on_bus("hid", "Charging")}, -1, "an unscoped hid battery"],
+		[{"PAD": _on_bus("bluetooth", "Discharging")}, -1, "an unscoped bluetooth battery"],
+		[{"HEADSET": _on_bus("usb", "Full")}, -1, "an unscoped usb battery"],
+		[
+			{
+				"MOUSE": _on_bus("hid", "Charging"),
+				"AC": _adapter("Mains", "0"),
+				"BAT0": _on_bus("acpi", "Discharging"),
+			},
+			0,
+			"an unscoped charging hid battery does not uncap a laptop on battery",
+		],
+		[{"BAT0": _on_bus("acpi", "Discharging")}, 0, "an acpi battery is the machine's"],
+		[{"BAT0": _on_bus("platform", "Discharging")}, 0, "a platform battery is the machine's"],
+		[{"hidpp_battery_0": _battery("Charging")}, -1, "an unscoped hidpp battery by name"],
+		[
+			{"hid-00:11:22:33:44:55-battery": _battery("Discharging")},
+			-1,
+			"an unscoped hid-input battery by name",
+		],
+		[
+			{"wacom_ac_0": _adapter("Mains", "1"), "BAT1": _battery("Discharging")},
+			0,
+			"a tablet's own adapter is not the machine's mains",
+		],
+		[
+			{"MOUSE": _scoped_on_bus("Battery", "Charging", "Unknown", "hid")},
+			-1,
+			"an unknown scope on the hid bus is a peripheral",
+		],
+		[
+			{"hidpp_battery_0": _scoped_on_bus("Battery", "Discharging", "System", "hid")},
+			0,
+			"an explicit system scope beats the bus and the name",
+		],
 	]
 	for row: Array in cases:
 		assert_eq(Backend.power_source_from_supplies(row[0]), row[1], row[2])
+
+
+func test_hid_battery_driver_names_are_peripherals() -> void:
+	for supply_name: String in [
+		"hid-0005:046D:B023.0004-battery",
+		"hidpp_battery_1",
+		"sony_controller_battery_00:11:22:33:44:55",
+		"ps-controller-battery-00:11:22:33:44:55",
+		"nintendo_switch_controller_battery_0005:057E:2009.0006",
+		"wacom_battery_0",
+		"wiimote_battery_00:11:22:33:44:55",
+		"steam-controller-ABC123-battery",
+	]:
+		assert_true(Backend.is_peripheral(supply_name, _battery("Discharging")), supply_name)
+	for supply_name: String in [
+		"BAT0", "BAT1", "AC", "ACAD", "ADP1", "ucsi-source-psy-USBC000:001"
+	]:
+		assert_false(Backend.is_peripheral(supply_name, _battery("Discharging")), supply_name)
 
 
 func test_every_adapter_type_online_is_external() -> void:
@@ -182,6 +236,51 @@ func test_a_device_scoped_supply_on_disk_is_not_the_computer() -> void:
 	_delete_tree(base)
 
 
+func test_an_unscoped_peripheral_on_disk_is_found_by_its_bus() -> void:
+	# As sysfs: each supply's device link points at its parent, and the
+	# parent's subsystem link points at the bus. No scope file anywhere.
+	var base := "/tmp/device-power-sysfs-bus-%d" % Time.get_ticks_usec()
+	var real := base.path_join("real")
+	var ps := base.path_join("ps")
+	DirAccess.make_dir_recursive_absolute(real.path_join("bus").path_join("hid"))
+	DirAccess.make_dir_recursive_absolute(real.path_join("bus").path_join("acpi"))
+	DirAccess.make_dir_recursive_absolute(real.path_join("devices").path_join("mouse0"))
+	DirAccess.make_dir_recursive_absolute(real.path_join("devices").path_join("PNP0C0A:00"))
+	_write(real.path_join("MOUSE").path_join("type"), "Battery\n")
+	_write(real.path_join("MOUSE").path_join("status"), "Charging\n")
+	_write(real.path_join("BAT0").path_join("type"), "Battery\n")
+	_write(real.path_join("BAT0").path_join("status"), "Discharging\n")
+	DirAccess.make_dir_recursive_absolute(ps)
+	var links: Array = [
+		["../../bus/hid", real.path_join("devices").path_join("mouse0").path_join("subsystem")],
+		[
+			"../../bus/acpi",
+			real.path_join("devices").path_join("PNP0C0A:00").path_join("subsystem")
+		],
+		[
+			real.path_join("devices").path_join("mouse0"),
+			real.path_join("MOUSE").path_join("device")
+		],
+		[
+			real.path_join("devices").path_join("PNP0C0A:00"),
+			real.path_join("BAT0").path_join("device")
+		],
+		[real.path_join("MOUSE"), ps.path_join("MOUSE")],
+		[real.path_join("BAT0"), ps.path_join("BAT0")],
+	]
+	for link: Array in links:
+		if OS.execute("/bin/ln", ["-s", link[0], link[1]]) != 0:
+			fail("could not symlink %s" % link[1])
+	assert_eq(Backend._read_subsystem(ps.path_join("MOUSE")), "hid", "the mouse's bus")
+	assert_eq(Backend._read_subsystem(ps.path_join("BAT0")), "acpi", "the pack's bus")
+	assert_eq(Backend._read_subsystem(real.path_join("devices")), "", "no device link")
+	var backend: DevicePowerLinuxBackend = Backend.new(ps, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), 0, "on battery beside an unscoped charging mouse")
+	DirAccess.remove_absolute(ps.path_join("BAT0"))
+	assert_eq(backend.get_power_source(), -1, "an unscoped mouse alone is unknown")
+	_delete_tree(base)
+
+
 func test_a_zero_length_special_file_is_still_read() -> void:
 	# proc files report length 0. get_file_as_string() returns "" for them.
 	var path := "/proc/self/comm"
@@ -211,6 +310,19 @@ func _device(status: String) -> Dictionary:
 func _scoped(type: String, status: String, scope: String, online: String = "") -> Dictionary:
 	var supply := _pack(type, status, online)
 	supply["scope"] = scope
+	return supply
+
+
+## A supply with no scope file whose parent device sits on [param bus].
+func _on_bus(bus: String, status: String) -> Dictionary:
+	var supply := _battery(status)
+	supply["subsystem"] = bus
+	return supply
+
+
+func _scoped_on_bus(type: String, status: String, scope: String, bus: String) -> Dictionary:
+	var supply := _scoped(type, status, scope)
+	supply["subsystem"] = bus
 	return supply
 
 

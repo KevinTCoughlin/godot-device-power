@@ -42,6 +42,11 @@ Before 1.0 the public API may change in a minor release.
   headset or controller battery was treated as the computer's: a desktop
   with only that supply was held to the battery cap, and a peripheral
   reporting `Charging` could leave a laptop on battery uncapped.
+- Linux also ignores a peripheral supply with no `scope` file, which some
+  drivers leave unset. Its parent device on the `hid`, `bluetooth` or `usb`
+  bus, or a HID battery driver's name (`hidpp_battery_*`, `hid-*-battery`
+  and the like), marks it. A `scope` of `System` still counts as the
+  computer's.
 - A failed Android refresh-rate read keeps the previous list. Resume, a
   battery-saver broadcast and `refresh()` published an empty list when the
   display was not ready or the read threw, which dropped the peak to 0 and

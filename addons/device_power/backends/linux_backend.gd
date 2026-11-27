@@ -28,8 +28,15 @@ extends DevicePowerBackend
 ## and so does this. Counted in, a desktop whose only battery is a wireless
 ## mouse is capped as if the machine were unplugged, and a peripheral that
 ## reports [code]Charging[/code] makes a laptop on battery look plugged in.
-## No [code]scope[/code] file means a system supply: that is how a laptop
-## battery and a mains adapter usually appear.
+## No [code]scope[/code] file usually means a system supply: that is how a
+## laptop battery and a mains adapter appear. Some peripheral drivers (older
+## kernels, out-of-tree ones) leave [code]scope[/code] unset, so a supply
+## without it is still a peripheral when its parent device sits on the
+## [code]hid[/code], [code]bluetooth[/code] or [code]usb[/code] bus (the
+## [code]device/subsystem[/code] link), or when its name is one the HID
+## battery drivers give ([code]hidpp_battery_0[/code],
+## [code]hid-...-battery[/code] and the like). A [code]scope[/code] of
+## [code]System[/code] is taken at its word and none of that applies.
 ##
 ## Battery saver, game mode and thermal status are not here. Mapping a raw
 ## zone temperature onto Android's thermal enum would be a guess, so heat
@@ -62,6 +69,24 @@ const _ADAPTER_TYPES := {
 	"Wireless": true,
 }
 const _BATTERY_TYPES := {"Battery": true, "UPS": true}
+## Buses a supply's parent device ([code]device/subsystem[/code]) sits on when
+## it powers a peripheral. A laptop pack or adapter hangs off ACPI, platform,
+## i2c or a USB-C port controller, not these.
+const _PERIPHERAL_BUSES := {"hid": true, "bluetooth": true, "usb": true}
+## Name prefixes the kernel's HID battery drivers use, for a supply whose
+## [code]device[/code] link cannot be read: hid-input, Logitech HID++,
+## Sony and PlayStation controllers, Nintendo controllers, Wacom tablets,
+## Wiimotes and Steam controllers.
+const _PERIPHERAL_NAME_PREFIXES: Array[String] = [
+	"hid-",
+	"hidpp_battery",
+	"sony_controller_battery",
+	"ps-controller-battery",
+	"nintendo_switch_controller",
+	"wacom_",
+	"wiimote_",
+	"steam-controller-",
+]
 ## sysfs and proc files report a length of 0, so a read must stop on its own.
 const _VALUE_MAX_BYTES := 128
 
@@ -95,23 +120,24 @@ func get_refresh_rates() -> PackedFloat32Array:
 ## The [enum DevicePower.PowerSource] value for supplies already read.
 ## Each value is a Dictionary with string fields [code]type[/code],
 ## [code]status[/code], [code]online[/code], [code]present[/code] and
-## [code]scope[/code], as the sysfs files read after stripping. A missing
-## file is an empty string. A
-## [code]present[/code] of [code]0[/code] drops that supply, and so does a
-## [code]scope[/code] of [code]Device[/code] (a peripheral, not the machine).
+## [code]scope[/code], as the sysfs files read after stripping, and
+## [code]subsystem[/code], the bus of the parent device. A missing file is an
+## empty string. A [code]present[/code] of [code]0[/code] drops that supply,
+## and so does a peripheral (see [method is_peripheral]). Keys are the
+## supply names.
 static func power_source_from_supplies(supplies: Dictionary) -> int:
 	var adapter_online := false
 	var adapter_present := false
 	var battery_present := false
 	var battery_charging := false
 	var battery_known := false
-	for raw in supplies.values():
+	for key in supplies:
+		var raw: Variant = supplies[key]
 		if not raw is Dictionary:
 			continue
 		var supply: Dictionary = raw
-		# scope=Device is a peripheral battery (hidpp_battery_0 and the like).
-		# The kernel does not treat it as the machine's supply.
-		if _field(supply, "scope") == "Device" or _field(supply, "present") == "0":
+		var supply_name: String = key if key is String else ""
+		if is_peripheral(supply_name, supply) or _field(supply, "present") == "0":
 			continue
 		var type := _field(supply, "type")
 		var status := _field(supply, "status")
@@ -137,6 +163,25 @@ static func power_source_from_supplies(supplies: Dictionary) -> int:
 	return _SOURCE_UNKNOWN
 
 
+## Whether a supply powers a peripheral (a mouse, a headset, a controller)
+## rather than the computer. [code]scope[/code] decides when it is
+## [code]Device[/code] or [code]System[/code]. Without it, or with
+## [code]Unknown[/code], a parent device on a peripheral bus or a HID battery
+## driver's name marks a peripheral, and anything else is the machine's.
+static func is_peripheral(supply_name: String, supply: Dictionary) -> bool:
+	var scope := _field(supply, "scope")
+	if scope == "Device":
+		return true
+	if scope == "System":
+		return false
+	if _PERIPHERAL_BUSES.has(_field(supply, "subsystem")):
+		return true
+	for prefix: String in _PERIPHERAL_NAME_PREFIXES:
+		if supply_name.begins_with(prefix):
+			return true
+	return false
+
+
 static func _read_supplies(root: String) -> Dictionary:
 	# open() on a missing directory returns null and does not log. The
 	# static get_directories_at() logs an error, which a release build would
@@ -155,8 +200,19 @@ static func _read_supplies(root: String) -> Dictionary:
 			"online": _read_value(base.path_join("online")),
 			"present": _read_value(base.path_join("present")),
 			"scope": _read_value(base.path_join("scope")),
+			"subsystem": _read_subsystem(base),
 		}
 	return supplies
+
+
+## The bus of a supply's parent device: the last part of the
+## [code]device/subsystem[/code] link ([code]../../bus/hid[/code] is
+## [code]hid[/code]). Empty when there is no parent or the link is unreadable.
+static func _read_subsystem(base: String) -> String:
+	var device := DirAccess.open(base.path_join("device"))
+	if device == null or not device.is_link("subsystem"):
+		return ""
+	return device.read_link("subsystem").get_file()
 
 
 ## One sysfs file. [code]get_file_as_string[/code] trusts the reported length,
