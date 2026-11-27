@@ -19,8 +19,17 @@ extends DevicePowerBackend
 ## that is still a charger, the same rule as Android's [code]plugged[/code]
 ## extra. [code]Charging[/code] is external power even if no adapter device
 ## is enumerated. Anything else with a battery that is present is battery.
-## No supply, a supply that cannot be read, or a status of [code]Unknown[/code]
-## with no adapter is unknown, and the policy imposes nothing.
+## No supply, or a status of [code]Unknown[/code] with no adapter, is
+## unknown, and the policy imposes nothing.
+##
+## [b]A failed read keeps the last answer.[/b] A supply file that exists but
+## cannot be opened or read (an ACPI battery can return an I/O error for a
+## moment), or a [code]power_supply[/code] directory that exists but cannot
+## be listed, is a failed read: the power source stays what the last good
+## read said, or unknown if there has been none. A supply that is gone or
+## reports [code]present[/code] [code]0[/code] is a real change and is read
+## as such. A peripheral's failed read does not count (a sleeping wireless
+## mouse can refuse its [code]status[/code]).
 ##
 ## [b]Peripherals are not the computer.[/b] A supply whose [code]scope[/code]
 ## is [code]Device[/code] powers a mouse, a headset or a controller. The
@@ -92,6 +101,8 @@ const _VALUE_MAX_BYTES := 128
 
 var _root: String
 var _read_refresh_rate: Callable
+## The last power source a good read gave, returned when a read fails.
+var _power_source: int = _SOURCE_UNKNOWN
 
 
 func _init(root: String = POWER_SUPPLY_ROOT, read_refresh_rate: Callable = Callable()) -> void:
@@ -106,7 +117,10 @@ func get_backend_name() -> String:
 
 
 func get_power_source() -> int:
-	return power_source_from_supplies(_read_supplies(_root))
+	var supplies: Variant = _read_supplies(_root)
+	if supplies is Dictionary and not read_failed(supplies):
+		_power_source = power_source_from_supplies(supplies)
+	return _power_source
 
 
 func get_refresh_rates() -> PackedFloat32Array:
@@ -122,7 +136,10 @@ func get_refresh_rates() -> PackedFloat32Array:
 ## [code]status[/code], [code]online[/code], [code]present[/code] and
 ## [code]scope[/code], as the sysfs files read after stripping, and
 ## [code]subsystem[/code], the bus of the parent device. A missing file is an
-## empty string. A [code]present[/code] of [code]0[/code] drops that supply,
+## empty string. A file that exists but could not be read is also an empty
+## string, and marks the supply with [code]unreadable[/code] set to
+## [code]true[/code] (see [method read_failed]). A [code]present[/code] of
+## [code]0[/code] drops that supply,
 ## and so does a peripheral (see [method is_peripheral]). Keys are the
 ## supply names.
 static func power_source_from_supplies(supplies: Dictionary) -> int:
@@ -163,6 +180,26 @@ static func power_source_from_supplies(supplies: Dictionary) -> int:
 	return _SOURCE_UNKNOWN
 
 
+## Whether [param supplies], as [method power_source_from_supplies] takes
+## them, came from a failed read: a supply that counts (not a peripheral, not
+## [code]present[/code] [code]0[/code]) has a file that exists but could not
+## be read. The answer would be built on a hole, so the caller keeps its last
+## one instead.
+static func read_failed(supplies: Dictionary) -> bool:
+	for key in supplies:
+		var raw: Variant = supplies[key]
+		if not raw is Dictionary:
+			continue
+		var supply: Dictionary = raw
+		var unreadable: Variant = supply.get("unreadable", false)
+		if not (unreadable is bool and unreadable):
+			continue
+		var supply_name: String = key if key is String else ""
+		if not is_peripheral(supply_name, supply) and _field(supply, "present") != "0":
+			return true
+	return false
+
+
 ## Whether a supply powers a peripheral (a mouse, a headset, a controller)
 ## rather than the computer. [code]scope[/code] decides when it is
 ## [code]Device[/code] or [code]System[/code]. Without it, or with
@@ -182,26 +219,27 @@ static func is_peripheral(supply_name: String, supply: Dictionary) -> bool:
 	return false
 
 
-static func _read_supplies(root: String) -> Dictionary:
+## Every supply under [param root], or [code]null[/code] when [param root]
+## exists but cannot be listed. A missing [param root] is no supplies.
+static func _read_supplies(root: String) -> Variant:
 	# open() on a missing directory returns null and does not log. The
 	# static get_directories_at() logs an error, which a release build would
 	# surface on a machine with no power_supply class.
 	var dir := DirAccess.open(root)
 	if dir == null:
-		return {}
+		return null if DirAccess.dir_exists_absolute(root) else {}
 	var supplies := {}
 	for name in dir.get_directories():
 		if name.begins_with("."):
 			continue
 		var base := root.path_join(name)
-		supplies[name] = {
-			"type": _read_value(base.path_join("type")),
-			"status": _read_value(base.path_join("status")),
-			"online": _read_value(base.path_join("online")),
-			"present": _read_value(base.path_join("present")),
-			"scope": _read_value(base.path_join("scope")),
-			"subsystem": _read_subsystem(base),
-		}
+		var supply := {"subsystem": _read_subsystem(base)}
+		for field: String in ["type", "status", "online", "present", "scope"]:
+			var value: Variant = _read_file(base.path_join(field))
+			if value == null:
+				supply["unreadable"] = true
+			supply[field] = value if value is String else ""
+		supplies[name] = supply
 	return supplies
 
 
@@ -219,16 +257,26 @@ static func _read_subsystem(base: String) -> String:
 ## and these files report 0, so that call returns empty. Read until EOF,
 ## bounded so a wedged file cannot spin.
 static func _read_value(path: String) -> String:
+	var value: Variant = _read_file(path)
+	return value if value is String else ""
+
+
+## [method _read_value], but [code]null[/code] when the file exists and could
+## not be opened or read. A missing file is an empty string: no such field.
+static func _read_file(path: String) -> Variant:
 	if not FileAccess.file_exists(path):
 		return ""
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
-		return ""
+		return null
 	var bytes := PackedByteArray()
 	while bytes.size() < _VALUE_MAX_BYTES:
 		var next := file.get_8()
 		if file.eof_reached():
 			break
+		if file.get_error() != OK:
+			file.close()
+			return null
 		bytes.append(next)
 	var text := bytes.get_string_from_utf8().strip_edges()
 	file.close()

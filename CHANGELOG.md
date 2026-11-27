@@ -36,6 +36,21 @@ Before 1.0 the public API may change in a minor release.
   not mapped onto Android's thermal enum. CI builds the Linux and Windows
   libraries and loads the Linux one in Godot.
 
+### Changed
+
+- A read that fails after a good one keeps the last good value (#32). The
+  Android plugin, the `JavaClassWrapper` fallback and Linux used to report
+  a failed re-read of the power source, battery saver, game mode or thermal
+  status as unknown, which could lift a battery or heat cap mid-session.
+  This is the rule #30 set for Android refresh rates, now for every value.
+  A read that has never succeeded is still unknown, a value the platform did
+  return (even one out of range) still replaces it, and a real change, such
+  as a battery that is gone, is read as one. There is no staleness bound.
+  On Linux a failed read is a supply file that exists but cannot be opened
+  or read, or a `power_supply` directory that cannot be listed; a
+  peripheral's does not count. The Windows extension cannot tell a failed
+  read from an unknown AC line, so it is unchanged.
+
 ### Fixed
 
 - Linux ignores power supplies whose `scope` is `Device`. A wireless mouse,

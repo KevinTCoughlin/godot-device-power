@@ -9,6 +9,19 @@ extends DevicePowerTestCase
 
 const Backend := preload("res://addons/device_power/backends/linux_backend.gd")
 const Facade := DevicePowerTestCase.FACADE_SCRIPT
+## rw-r--r-- and rwxr-xr-x, to put a fixture back after making it unreadable.
+const _READABLE := (
+	FileAccess.UNIX_READ_OWNER
+	| FileAccess.UNIX_WRITE_OWNER
+	| FileAccess.UNIX_READ_GROUP
+	| FileAccess.UNIX_READ_OTHER
+)
+const _LISTABLE := (
+	_READABLE
+	| FileAccess.UNIX_EXECUTE_OWNER
+	| FileAccess.UNIX_EXECUTE_GROUP
+	| FileAccess.UNIX_EXECUTE_OTHER
+)
 
 
 func test_power_source_from_supplies() -> void:
@@ -278,6 +291,60 @@ func test_an_unscoped_peripheral_on_disk_is_found_by_its_bus() -> void:
 	assert_eq(backend.get_power_source(), 0, "on battery beside an unscoped charging mouse")
 	DirAccess.remove_absolute(ps.path_join("BAT0"))
 	assert_eq(backend.get_power_source(), -1, "an unscoped mouse alone is unknown")
+	_delete_tree(base)
+
+
+func test_read_failed() -> void:
+	var unreadable := _battery("")
+	unreadable["unreadable"] = true
+	var gone := _battery("", "0")
+	gone["unreadable"] = true
+	var mouse := _device("")
+	mouse["unreadable"] = true
+	var on_hid := _on_bus("hid", "")
+	on_hid["unreadable"] = true
+	var cases: Array = [
+		[{}, false, "nothing enumerated is a reading"],
+		[{"BAT1": _battery("Discharging")}, false, "every file read"],
+		[{"BAT1": unreadable}, true, "the battery could not be read"],
+		[{"AC": _adapter("Mains", "1"), "BAT1": unreadable}, true, "beside an adapter"],
+		[{"BAT1": gone}, false, "a pack that is not present does not count"],
+		[{"MOUSE": mouse, "BAT1": _battery("Full")}, false, "a scoped peripheral"],
+		[{"MOUSE": on_hid, "BAT1": _battery("Full")}, false, "an unscoped peripheral"],
+		[{"hidpp_battery_0": unreadable}, false, "a HID battery driver's name"],
+		[{"BAT1": {"type": "Battery", "unreadable": "yes"}}, false, "only a real true"],
+	]
+	for case: Array in cases:
+		assert_eq(Backend.read_failed(case[0]), case[1], case[2])
+
+
+func test_a_failed_read_keeps_the_last_power_source() -> void:
+	var base := _make_tree()
+	var real := base.path_join("real")
+	var root := base.path_join("ps")
+	var status := real.path_join("BAT1").path_join("status")
+	FileAccess.set_unix_permissions(status, 0)
+	if FileAccess.open(status, FileAccess.READ) != null:
+		# Root reads any file, so there is no failure to simulate.
+		print("  skip: this user can read a mode-000 file")
+		_delete_tree(base)
+		return
+	var first: DevicePowerLinuxBackend = Backend.new(root, func() -> float: return 60.0)
+	assert_eq(first.get_power_source(), -1, "a failed first read is unknown")
+	FileAccess.set_unix_permissions(status, _READABLE)
+	var backend: DevicePowerLinuxBackend = Backend.new(root, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), 0, "on battery")
+	FileAccess.set_unix_permissions(status, 0)
+	assert_eq(backend.get_power_source(), 0, "an unreadable status keeps battery")
+	FileAccess.set_unix_permissions(root, 0)
+	assert_eq(backend.get_power_source(), 0, "an unlistable power_supply keeps battery")
+	FileAccess.set_unix_permissions(root, _LISTABLE)
+	FileAccess.set_unix_permissions(status, _READABLE)
+	_write(real.path_join("ACAD").path_join("online"), "1\n")
+	assert_eq(backend.get_power_source(), 1, "a good read replaces it")
+	DirAccess.remove_absolute(root.path_join("ACAD"))
+	DirAccess.remove_absolute(root.path_join("BAT1"))
+	assert_eq(backend.get_power_source(), -1, "supplies that are gone are a real change")
 	_delete_tree(base)
 
 

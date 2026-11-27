@@ -34,11 +34,15 @@ extends DevicePowerBackend
 ## default frame rate while staying a game, and how it lets the panel drop to
 ## a lower rate. The user's peak refresh rate setting still caps it.
 ##
-## Every Java call is checked with [method JavaClassWrapper.get_exception]; a
-## failure reads as "unknown", never as a guess.
+## Every Java call is checked with [method JavaClassWrapper.get_exception].
+## A failed read is never a guess: it keeps the value from the last good read
+## of the same thing, and is unknown when there has been none. A call that
+## throws once must not lift a battery or heat cap mid-session. A value
+## Android did return, even one out of range, is a reading and replaces it,
+## and an API level below the one a reading needs is always unknown.
 
-# Every Java call can fail, and each failure is an early "unknown" return, so
-# the readers here have more returns than gdlint's default allows.
+# Every Java call can fail, and each failure is an early return, so the
+# readers here have more returns than gdlint's default allows.
 # gdlint: disable=max-returns
 
 const _BATTERY_CHANGED := "android.intent.action.BATTERY_CHANGED"
@@ -50,6 +54,11 @@ var _sdk: int = 0
 var _filter: Object = null
 var _power_manager: Object = null
 var _game_manager: Object = null
+## The last good read of each value, returned when a read fails.
+var _power_source: int = -1
+var _power_saver: Variant = null
+var _game_mode: int = 0
+var _thermal_status: int = -1
 
 
 func _init(runtime: Object) -> void:
@@ -67,65 +76,75 @@ func can_vote_frame_rate() -> bool:
 	return true
 
 
+## A failed read, or a broadcast without the [code]plugged[/code] extra
+## (every battery broadcast carries it), keeps the last good answer.
 func get_power_source() -> int:
 	var context = _context()
 	if context == null:
-		return -1
+		return _power_source
 	if _filter == null:
 		var intent_filter = JavaClassWrapper.wrap("android.content.IntentFilter")
 		if not _ok() or not intent_filter:
-			return -1
+			return _power_source
 		_filter = intent_filter.IntentFilter(_BATTERY_CHANGED)
 		if not _ok():
 			_filter = null
-			return -1
+			return _power_source
 	var status = context.registerReceiver(null, _filter)
 	if not _ok() or status == null:
-		return -1
+		return _power_source
 	var plugged = status.getIntExtra("plugged", -1)
 	if not _ok() or not (plugged is int) or plugged < 0:
-		return -1
+		return _power_source
 	# 0 is on battery; AC, USB, wireless and dock are all bit flags above it.
-	return 1 if plugged > 0 else 0
+	_power_source = 1 if plugged > 0 else 0
+	return _power_source
 
 
+## A failed read, or an answer that is not a boolean, keeps the last good one.
 func is_power_saver_enabled() -> Variant:
 	var power = _service("power")
 	if power == null:
-		return null
+		return _power_saver
 	var saver = power.isPowerSaveMode()
 	if not _ok():
-		return null
+		return _power_saver
 	# The wrapper hands a Java boolean back as an int; the contract is a bool.
 	if saver is bool:
-		return saver
-	if saver is int:
-		return saver != 0
-	return null
+		_power_saver = saver
+	elif saver is int:
+		_power_saver = saver != 0
+	return _power_saver
 
 
+## A failed read keeps the last good mode. An int outside the documented
+## modes is Android's answer, and reads as unsupported.
 func get_game_mode() -> int:
 	if _sdk < 31:
 		return 0
 	var manager = _service("game")
 	if manager == null:
-		return 0
+		return _game_mode
 	var mode = manager.getGameMode()
-	if not _ok() or not (mode is int) or mode < 0 or mode > 4:
-		return 0
-	return mode
+	if not _ok() or not (mode is int):
+		return _game_mode
+	_game_mode = mode if mode >= 0 and mode <= 4 else 0
+	return _game_mode
 
 
+## A failed read keeps the last good status. An int outside the documented
+## statuses is Android's answer, and reads as unknown.
 func get_thermal_status() -> int:
 	if _sdk < 29:
 		return -1
 	var power = _service("power")
 	if power == null:
-		return -1
+		return _thermal_status
 	var status = power.getCurrentThermalStatus()
-	if not _ok() or not (status is int) or status < 0 or status > 6:
-		return -1
-	return status
+	if not _ok() or not (status is int):
+		return _thermal_status
+	_thermal_status = status if status >= 0 and status <= 6 else -1
+	return _thermal_status
 
 
 func get_refresh_rates() -> PackedFloat32Array:

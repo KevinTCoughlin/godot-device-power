@@ -76,8 +76,9 @@ func test_the_saver_is_a_bool_whatever_the_wrapper_returns() -> void:
 		power_manager.power_save = pair[0]
 		assert_eq(backend.is_power_saver_enabled(), pair[1], "isPowerSaveMode=%s" % [pair[0]])
 	for garbage: Variant in [null, "1", 1.0]:
+		var fresh := _make_backend(34)
 		power_manager.power_save = garbage
-		assert_null(backend.is_power_saver_enabled(), "isPowerSaveMode=%s" % [garbage])
+		assert_null(fresh.is_power_saver_enabled(), "first isPowerSaveMode=%s" % [garbage])
 
 
 func test_a_missing_power_service_is_unknown() -> void:
@@ -116,9 +117,14 @@ func test_game_mode_values() -> void:
 	for mode: int in range(0, 5):
 		game_manager.mode = mode
 		assert_eq(backend.get_game_mode(), mode, "mode %d" % mode)
-	for garbage: Variant in [-1, 5, 2.0, null, "2"]:
+	for out_of_range: int in [-1, 5]:
+		game_manager.mode = 2
+		backend.get_game_mode()
+		game_manager.mode = out_of_range
+		assert_eq(backend.get_game_mode(), 0, "mode %d is Android's answer" % out_of_range)
+	for garbage: Variant in [2.0, null, "2"]:
 		game_manager.mode = garbage
-		assert_eq(backend.get_game_mode(), 0, "mode %s" % [garbage])
+		assert_eq(_make_backend(34).get_game_mode(), 0, "first mode %s" % [garbage])
 
 
 func test_thermal_status_needs_api_29() -> void:
@@ -131,9 +137,77 @@ func test_thermal_status_values() -> void:
 	for status: int in range(0, 7):
 		power_manager.thermal = status
 		assert_eq(backend.get_thermal_status(), status, "status %d" % status)
-	for garbage: Variant in [-1, 7, 3.0, null, "3"]:
+	for out_of_range: int in [-1, 7]:
+		power_manager.thermal = 3
+		backend.get_thermal_status()
+		power_manager.thermal = out_of_range
+		assert_eq(backend.get_thermal_status(), -1, "status %d is Android's answer" % out_of_range)
+	for garbage: Variant in [3.0, null, "3"]:
 		power_manager.thermal = garbage
-		assert_eq(backend.get_thermal_status(), -1, "status %s" % [garbage])
+		assert_eq(_make_backend(34).get_thermal_status(), -1, "first status %s" % [garbage])
+
+
+func test_a_failed_read_keeps_the_last_good_value() -> void:
+	battery.plugged = 0
+	power_manager.power_save = 1
+	game_manager.mode = 3
+	power_manager.thermal = 4
+	assert_eq(backend.get_power_source(), 0, "battery")
+	assert_eq(backend.is_power_saver_enabled(), true, "saver on")
+	assert_eq(backend.get_game_mode(), 3, "battery mode")
+	assert_eq(backend.get_thermal_status(), 4, "critical")
+	battery.plugged = -1
+	power_manager.power_save = null
+	game_manager.mode = null
+	power_manager.thermal = "4"
+	assert_eq(backend.get_power_source(), 0, "a broadcast without plugged keeps battery")
+	assert_eq(backend.is_power_saver_enabled(), true, "a Java null keeps the saver")
+	assert_eq(backend.get_game_mode(), 3, "a Java null keeps the mode")
+	assert_eq(backend.get_thermal_status(), 4, "garbage keeps the heat")
+	context.battery = null
+	assert_eq(backend.get_power_source(), 0, "no sticky broadcast keeps battery")
+	runtime.context = null
+	assert_eq(backend.get_power_source(), 0, "no context keeps battery")
+	assert_eq(backend.get_thermal_status(), 4, "the cached service still answers")
+	runtime.context = context
+	context.battery = battery
+	battery.plugged = 1
+	power_manager.power_save = 0
+	game_manager.mode = 1
+	power_manager.thermal = 0
+	assert_eq(backend.get_power_source(), 1, "a good read replaces it")
+	assert_eq(backend.is_power_saver_enabled(), false, "saver off")
+	assert_eq(backend.get_game_mode(), 1, "standard")
+	assert_eq(backend.get_thermal_status(), 0, "cool")
+
+
+func test_a_missing_service_keeps_the_last_good_value() -> void:
+	power_manager.power_save = 1
+	power_manager.thermal = 3
+	var fresh := _make_backend(34)
+	assert_eq(fresh.get_thermal_status(), 3, "read")
+	assert_eq(fresh.is_power_saver_enabled(), true, "read")
+	# Drop the cache, as if the service had never been fetched, and make the
+	# next fetch fail.
+	fresh._power_manager = null
+	context.services.erase("power")
+	assert_eq(fresh.get_thermal_status(), 3, "kept")
+	assert_eq(fresh.is_power_saver_enabled(), true, "kept")
+
+
+func test_the_facade_keeps_a_cap_through_a_failed_poll() -> void:
+	battery.plugged = 0
+	power_manager.thermal = 3
+	power.set_backend(backend)
+	assert_eq(power.recommended_fps_cap(120.0), 30, "severe heat on battery")
+	changes = 0
+	context.battery = null
+	power_manager.thermal = null
+	power.refresh()
+	assert_eq(power.get_power_source(), Facade.PowerSource.BATTERY, "still on battery")
+	assert_eq(power.get_thermal_status(), Facade.ThermalStatus.SEVERE, "still hot")
+	assert_eq(power.recommended_fps_cap(120.0), 30, "the cap holds")
+	assert_eq(changes, 0, "a failed read is not a change")
 
 
 func test_the_facade_reads_the_fallback() -> void:

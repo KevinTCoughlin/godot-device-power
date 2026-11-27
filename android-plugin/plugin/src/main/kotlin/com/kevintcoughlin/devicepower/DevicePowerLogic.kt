@@ -11,6 +11,13 @@ package com.kevintcoughlin.devicepower
 // The numbers are the GDScript facade's: PowerSource, GameMode and
 // ThermalStatus in addons/device_power/device_power.gd. "Unknown" is always
 // an explicit value, never a guess.
+//
+// A read that fails keeps the previous value (issue #32). Each `afterRead`
+// takes the raw platform answer, null when the read failed, and the value
+// published before it. Null keeps that value, so a binder call that throws
+// once does not drop a battery or heat cap mid-session; before any good
+// read the previous value is the default, which is unknown. An answer the
+// platform did give, including an out-of-range one, replaces it.
 
 /** Where the power comes from: DevicePower.PowerSource. */
 object PowerSource {
@@ -31,6 +38,15 @@ object PowerSource {
         plugged == 0 -> BATTERY
         else -> EXTERNAL
     }
+
+    /**
+     * [plugged] as read, null when there was no sticky intent or reading it
+     * threw. Null or a missing extra (-1) keeps [previous]: every battery
+     * broadcast carries `plugged`, so its absence is a failed read, not a
+     * device that stopped knowing.
+     */
+    fun afterRead(plugged: Int?, previous: Int): Int =
+        if (plugged == null || plugged < 0) previous else fromPlugged(plugged)
 }
 
 /** A boolean that can be unknown, as an Int Godot cannot misread. */
@@ -44,6 +60,10 @@ object TriState {
         true -> ON
         false -> OFF
     }
+
+    /** [value] as read, null when the read failed, which keeps [previous]. */
+    fun afterRead(value: Boolean?, previous: Int): Int =
+        if (value == null) previous else of(value)
 }
 
 /** android.app.GameManager modes: DevicePower.GameMode. */
@@ -57,6 +77,13 @@ object GameModes {
         mode in UNSUPPORTED..CUSTOM -> mode
         else -> UNSUPPORTED
     }
+
+    /**
+     * [mode] as read, null when the read failed, which keeps [previous].
+     * Below API 31 there is nothing to read: always [UNSUPPORTED].
+     */
+    fun afterRead(mode: Int?, sdkInt: Int, previous: Int): Int =
+        if (sdkInt >= 31 && mode == null) previous else normalize(mode, sdkInt)
 }
 
 /** PowerManager.THERMAL_STATUS_*: DevicePower.ThermalStatus. */
@@ -71,6 +98,13 @@ object ThermalStatus {
         status in NONE..SHUTDOWN -> status
         else -> UNKNOWN
     }
+
+    /**
+     * [status] as read, null when the read failed, which keeps [previous].
+     * Below API 29 there is nothing to read: always [UNKNOWN].
+     */
+    fun afterRead(status: Int?, sdkInt: Int, previous: Int): Int =
+        if (sdkInt >= 29 && status == null) previous else normalize(status, sdkInt)
 }
 
 /** One Display.Mode, reduced to what the refresh rate list needs. */

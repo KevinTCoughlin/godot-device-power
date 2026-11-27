@@ -78,7 +78,10 @@ false one is worse than none.
 ## House rules
 
 - **Honest returns.** Unknown state is `null` or `-1`; a failed vote is
-  `false`. Never substitute a plausible guess for an unknown value.
+  `false`. Never substitute a plausible guess for an unknown value. A read
+  that fails after a good one keeps the last good value (#32); a read that
+  has never succeeded is unknown, and a real change (a battery removed) is a
+  reading, not a failure.
 - **Check every value from Android.** In a release export a GDScript runtime
   error silently makes the function return `null`, and a `null` handed on to a
   typed native method can crash. Type-check and range-check whatever crosses
