@@ -320,7 +320,8 @@ Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab
 
 `DevicePowerLinuxBackend` reads `/sys/class/power_supply`. A supply is
 usually a symlink; that is followed. No process is spawned and nothing is
-parsed except the fixed `type`, `status`, `online` and `present` files.
+parsed except the fixed `type`, `status`, `online`, `present` and `scope`
+files, and the name the parent device's `subsystem` link points at.
 
 - An adapter (`Mains`, `USB`, `USB_C`, `USB_PD`, `Wireless`, and the other
   USB types the kernel names) with `online` of `1` is external power. So is
@@ -338,8 +339,13 @@ parsed except the fixed `type`, `status`, `online` and `present` files.
   `power_supply_is_system_supplied()` ignores it. A desktop whose only
   supplies are those stays unknown and uncapped, and a peripheral that
   reports `Charging` does not make a laptop on battery look plugged in.
-  No `scope` file means a system supply, which is how a laptop battery and
-  a mains adapter usually appear.
+  No `scope` file usually means a system supply, which is how a laptop
+  battery and a mains adapter appear. Some peripheral drivers leave `scope`
+  unset, so a supply without it is still a peripheral when its parent device
+  (`device/subsystem`) is on the `hid`, `bluetooth` or `usb` bus, or when its
+  name is a HID battery driver's (`hidpp_battery_*`, `hid-*-battery`,
+  `ps-controller-battery-*` and the like). `scope` set to `System` is taken
+  at its word.
 
 The backend is polled (`poll_interval`, 2 s), same as the Android fallback.
 Plugging in is noticed within that, not by a kernel notification.
