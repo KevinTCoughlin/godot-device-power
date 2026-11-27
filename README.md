@@ -42,23 +42,24 @@ that, in one place, with a policy you can read and replace.
 - Godot 4.7.x (4.7.2, the current stable, is what CI and the device tests use).
   A non-blocking CI lane also runs Godot 4.8 beta 5. That lane does not fail
   the workflow, and 4.8 is not a production target. See
-  [Godot 4.8 preview](#godot-48-beta-2-preview).
+  [Godot 4.8 preview](#godot-48-preview).
 - For the Android plugin: an Android export with **Use Gradle Build** on
   (Godot's Android build template installed), minSdk 24, as Godot's own.
   Without a Gradle build the addon still works on Android through the
   `JavaClassWrapper` fallback.
 
-### Godot 4.8 beta 2 (preview)
+### Godot 4.8 preview
 
 4.8 beta 2 shipped with export templates on 29 October 2026 (engine
-`4.8.beta2.official.cafc17a19`). It is still a preview. 4.7.2 stays the
+`4.8.beta2.official.cafc17a19`). 4.8 is still a preview. 4.7.2 stays the
 supported engine, and this addon is still built against `4.7.2.stable`.
 
 Checked against the official editor, export templates and `godot-lib` AAR:
 
 - The headless GDScript suite and the editor-load smoke test pass, and
-  opening the project does not rewrite `project.godot`. CI runs both on
-  4.8 beta 2 next to 4.7.2. The 4.8 job does not fail the workflow.
+  opening the project does not rewrite `project.godot`. CI ran both on
+  4.8 beta 2 next to 4.7.2. The 4.8 job did not fail the workflow. The
+  lane has since moved to 4.8 beta 5, below.
 - `GodotPlugin`, `SignalInfo`, `UsedByGodot`, `AndroidRuntime` and
   `JavaClassWrapper` are unchanged. `EditorExportPlugin._get_android_libraries`
   is unchanged, so the export plugin and the `JavaClassWrapper` fallback use
