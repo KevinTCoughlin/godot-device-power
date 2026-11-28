@@ -33,10 +33,27 @@ int main() {
 	{
 		const PowerReading failed = interpret_system_power(raw(false, 1, 8, 1));
 		expect(failed.source == -1 && failed.saver == -1, "a failed call is unknown");
+		expect(!failed.valid, "a failed call is marked as one");
+	}
+	{
+		// Issue #36: a failed call and a good read of an unknown AC line both
+		// have source -1. Only valid tells the addon which one to keep.
+		const PowerReading failed = interpret_system_power(raw(false, 255, 1, 0));
+		const PowerReading unknown_line = interpret_system_power(raw(true, 255, 1, 0));
+		expect(!failed.valid && failed.source == -1 && failed.saver == -1,
+				"a failed call with an unknown AC line is a failed read");
+		expect(unknown_line.valid && unknown_line.source == -1 && unknown_line.saver == 0,
+				"a good read of an unknown AC line is a valid unknown");
+	}
+	{
+		const PowerReading fresh;
+		expect(!fresh.valid && fresh.source == -1 && fresh.saver == -1,
+				"the default reading is a failed one");
 	}
 	{
 		const PowerReading plugged = interpret_system_power(raw(true, 1, 8, 0));
-		expect(plugged.source == 1 && plugged.saver == 0, "charging on AC is external, saver off");
+		expect(plugged.valid && plugged.source == 1 && plugged.saver == 0,
+				"charging on AC is external, saver off");
 	}
 	{
 		// Charge limit: online, not charging, saver on.

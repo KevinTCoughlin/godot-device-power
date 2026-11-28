@@ -23,6 +23,12 @@
 //   unplugged -> battery, charging or full -> external, unknown -> unknown.
 //   NSProcessInfo.processInfo.isLowPowerModeEnabled is the battery saver.
 //
+// A failed IOKit or UIKit call is RawSystemPower{} (valid false), which the
+// addon answers with its last good value. A call that succeeds and reports
+// an unknown state is valid with an unknown source, as on Windows. Today
+// read_platform_power() does not call this file, so nothing on Apple is
+// ambiguous yet.
+//
 // Thermal state (NSProcessInfo.thermalState: nominal / fair / serious /
 // critical) is deliberately not mapped onto Android's ThermalStatus. The
 // numbers are a different scale, and this addon does not guess one from the

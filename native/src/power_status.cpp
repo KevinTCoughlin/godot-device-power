@@ -21,6 +21,7 @@ PowerReading interpret_system_power(RawSystemPower in) {
 	if (!in.valid) {
 		return out;
 	}
+	out.valid = true;
 	out.saver = (in.saver_flag & 1) != 0 ? kSaverOn : kSaverOff;
 
 	const bool no_battery = (in.battery_flag & kNoBattery) != 0 && in.battery_flag != 255;

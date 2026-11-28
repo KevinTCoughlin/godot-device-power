@@ -388,16 +388,16 @@ all read the same way.
 
 On Android, an older API level is unknown for that one value, and so is a
 read that fails before any has succeeded. The rest still work. A read that
-fails after a good one keeps that value, on every backend that can tell a
-failure from a reading (both Android backends and Linux): a binder call or
-sysfs file that errors for a moment must not lift a battery or heat cap
-mid-session. There is no staleness bound; the next good read replaces it.
-The Windows extension reports a failed read and an unknown AC line as the
-same value, so there a failure is still unknown. If the plugin is missing or speaks another API,
-the addon uses the `JavaClassWrapper` backend, then the null backend. Linux
-with no `power_supply` class (a desktop, or a sandbox that hides sysfs) is
-unknown and stays uncapped. Windows without the GDExtension, macOS, iOS and
-the web stay on the null backend and impose no cap.
+fails after a good one keeps that value, on every backend that reads (both
+Android backends, Linux and the Windows extension): a binder call, sysfs
+file or `GetSystemPowerStatus` that errors for a moment must not lift a
+battery or heat cap mid-session. There is no staleness bound; the next good
+read replaces it, including one that reports unknown. If the plugin is
+missing or speaks another API, the addon uses the `JavaClassWrapper`
+backend, then the null backend. Linux with no `power_supply` class (a
+desktop, or a sandbox that hides sysfs) is unknown and stays uncapped.
+Windows without the GDExtension, macOS, iOS and the web stay on the null
+backend and impose no cap.
 
 ## Backends
 
@@ -441,8 +441,14 @@ under `addons/device_power/bin/native/`, which is not committed.
 On Windows the read is `GetSystemPowerStatus`. AC online is external power
 even when the battery is not charging. AC offline is battery. An unknown AC
 line with the no-battery flag is external (a desktop). Battery saver is bit 0
-of `SystemStatusFlag`. The current refresh rate comes from `DisplayServer`;
-other modes are not visible, and there is no frame-rate vote.
+of `SystemStatusFlag`. A failed `GetSystemPowerStatus` keeps the last
+good power source and battery saver (unknown if there was none); a good read
+whose AC line is unknown, on a machine with a battery, is unknown. The
+extension's `read_power_status()` returns `valid`, `source` and `saver` from
+one read, so the addon can tell the two apart; `get_power_source()` and
+`is_power_saver_enabled()` cannot, and are kept for compatibility. The
+current refresh rate comes from `DisplayServer`; other modes are not
+visible, and there is no frame-rate vote.
 
 The Linux build of the same library loads and returns `is_supported() == false`,
 so a Linux machine that has the file installed does not start capping. macOS

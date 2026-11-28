@@ -10,11 +10,20 @@ extends DevicePowerBackend
 ##
 ## The extension is optional. If it is missing, built for another platform,
 ## or [method is_supported] is false, [method from_runtime] returns null and
-## the facade keeps the null backend. A failed platform read is unknown, not
-## a guess. Unlike the other backends it does not keep the last good value:
-## the extension reports a failed [code]GetSystemPowerStatus[/code] and the
-## AC line's own "unknown" as the same [code]-1[/code], so a failure cannot
-## be told from a reading here.
+## the facade keeps the null backend.
+##
+## [b]A failed read keeps the last answer.[/b] Each read is the extension's
+## [code]read_power_status()[/code], whose [code]valid[/code] is
+## [code]false[/code] when the platform call failed (a failed
+## [code]GetSystemPowerStatus[/code] on Windows). The power source and
+## battery saver then stay what the last good read said, or unknown if there
+## has been none. A good read that reports unknown, such as an AC line of
+## 255 on a machine with a battery, is the platform's answer and replaces
+## it, and so does a value out of range. An extension built before
+## [code]read_power_status()[/code] existed is read through
+## [code]get_power_source()[/code] and [code]is_power_saver_enabled()[/code],
+## which cannot tell a failure from an unknown, so there a failure is
+## unknown.
 ##
 ## Refresh rate is the current one from [DisplayServer], the same limit as
 ## Linux: other modes are invisible, and this addon cannot switch them. The
@@ -22,6 +31,9 @@ extends DevicePowerBackend
 
 var _native: Object
 var _read_refresh_rate: Callable
+## The last good read of each value, returned when a read fails.
+var _power_source: int = -1
+var _power_saver: Variant = null
 
 
 func _init(native: Object, read_refresh_rate: Callable = Callable()) -> void:
@@ -64,19 +76,23 @@ static func from_runtime() -> DevicePowerNativeBackend:
 func get_power_source() -> int:
 	if not is_instance_valid(_native):
 		return -1
-	var source: Variant = _native.call(&"get_power_source")
-	if source is int and source >= -1 and source <= 1:
-		return source
-	return -1
+	if not _native.has_method(&"read_power_status"):
+		return _source_from(_native.call(&"get_power_source"))
+	var status: Variant = _read_status()
+	if status is Dictionary:
+		_power_source = _source_from(status.get("source"))
+	return _power_source
 
 
 func is_power_saver_enabled() -> Variant:
 	if not is_instance_valid(_native):
 		return null
-	var saver: Variant = _native.call(&"is_power_saver_enabled")
-	if saver is bool:
-		return saver
-	return null
+	if not _native.has_method(&"read_power_status"):
+		return _saver_from(_native.call(&"is_power_saver_enabled"))
+	var status: Variant = _read_status()
+	if status is Dictionary:
+		_power_saver = _saver_from(status.get("saver"))
+	return _power_saver
 
 
 func get_refresh_rates() -> PackedFloat32Array:
@@ -89,3 +105,26 @@ func get_refresh_rates() -> PackedFloat32Array:
 
 static func _screen_refresh_rate() -> float:
 	return DisplayServer.screen_get_refresh_rate()
+
+
+## One [code]read_power_status()[/code], or [code]null[/code] when the read
+## failed: [code]valid[/code] is not [code]true[/code], or the answer is not
+## a [Dictionary] at all.
+func _read_status() -> Variant:
+	var status: Variant = _native.call(&"read_power_status")
+	if not status is Dictionary:
+		return null
+	var valid: Variant = status.get("valid")
+	if not (valid is bool and valid):
+		return null
+	return status
+
+
+static func _source_from(source: Variant) -> int:
+	if source is int and source >= -1 and source <= 1:
+		return source
+	return -1
+
+
+static func _saver_from(saver: Variant) -> Variant:
+	return saver if saver is bool else null

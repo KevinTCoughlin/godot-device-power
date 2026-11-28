@@ -48,8 +48,16 @@ Before 1.0 the public API may change in a minor release.
   as a battery that is gone, is read as one. There is no staleness bound.
   On Linux a failed read is a supply file that exists but cannot be opened
   or read, or a `power_supply` directory that cannot be listed; a
-  peripheral's does not count. The Windows extension cannot tell a failed
-  read from an unknown AC line, so it is unchanged.
+  peripheral's does not count.
+- The Windows extension keeps the last good power source and battery saver
+  when `GetSystemPowerStatus` fails (#36), under the same rule. A failed
+  call used to read as unknown, the same `-1` as a good read of an unknown
+  AC line. `DevicePowerNative` has a new `read_power_status()`, a
+  `Dictionary` with `valid`, `source` and `saver`, and the native backend
+  uses it; a good read that reports unknown still replaces the last value.
+  `get_power_source()` and `is_power_saver_enabled()` are unchanged, and an
+  extension built without `read_power_status()` is read through them as
+  before.
 
 ### Fixed
 

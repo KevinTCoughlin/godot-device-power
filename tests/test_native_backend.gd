@@ -9,6 +9,7 @@ extends DevicePowerTestCase
 
 const Backend := preload("res://addons/device_power/backends/native_backend.gd")
 const Fake := preload("res://tests/fake_native.gd")
+const FakeLegacy := preload("res://tests/fake_native_legacy.gd")
 const Facade := DevicePowerTestCase.FACADE_SCRIPT
 
 
@@ -55,6 +56,91 @@ func test_bad_native_values_are_unknown() -> void:
 	assert_eq(backend.get_refresh_rates(), PackedFloat32Array(), "a string rate is dropped")
 	fake.power_saver = null
 	assert_null(backend.is_power_saver_enabled(), "null stays unknown")
+
+
+func test_a_failed_read_keeps_the_last_good_value() -> void:
+	var fake: RefCounted = Fake.new()
+	fake.power_source = 0
+	fake.power_saver = true
+	var backend := Backend.new(fake, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), 0, "battery")
+	assert_eq(backend.is_power_saver_enabled(), true, "saver on")
+	fake.read_ok = false
+	assert_eq(backend.get_power_source(), 0, "a failed read keeps battery")
+	assert_eq(backend.is_power_saver_enabled(), true, "a failed read keeps the saver")
+	for broken: Variant in [null, "valid", {}, {"valid": 1, "source": 1, "saver": false}]:
+		fake.status_override = broken
+		assert_eq(backend.get_power_source(), 0, "%s is a failed read" % [broken])
+		assert_eq(backend.is_power_saver_enabled(), true, "%s keeps the saver" % [broken])
+	fake.status_override = null
+	fake.read_ok = true
+	fake.power_source = 1
+	fake.power_saver = false
+	assert_eq(backend.get_power_source(), 1, "a good read replaces it")
+	assert_eq(backend.is_power_saver_enabled(), false, "saver off")
+
+
+func test_a_failed_first_read_is_unknown() -> void:
+	var fake: RefCounted = Fake.new()
+	fake.power_source = 0
+	fake.power_saver = true
+	fake.read_ok = false
+	var backend := Backend.new(fake, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), -1, "nothing to keep")
+	assert_null(backend.is_power_saver_enabled(), "nothing to keep")
+
+
+func test_a_good_read_of_unknown_replaces_the_last_value() -> void:
+	# A valid read can still say unknown: Windows reports an AC line of 255
+	# on a machine with a battery. That is the platform's answer, not a
+	# failure, so it is not hidden behind the last value.
+	var fake: RefCounted = Fake.new()
+	fake.power_source = 0
+	fake.power_saver = true
+	var backend := Backend.new(fake, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), 0, "battery")
+	fake.power_source = -1
+	fake.power_saver = null
+	assert_eq(backend.get_power_source(), -1, "a reported unknown is a reading")
+	assert_null(backend.is_power_saver_enabled(), "a reported unknown saver is a reading")
+	fake.power_source = 0
+	backend.get_power_source()
+	fake.power_source = 9
+	assert_eq(backend.get_power_source(), -1, "an out-of-range value is a reading")
+
+
+func test_the_facade_keeps_a_cap_through_a_failed_poll() -> void:
+	var fake: RefCounted = Fake.new()
+	fake.power_source = 1
+	fake.power_saver = true
+	var facade := make_facade()
+	facade.set_backend(Backend.new(fake, func() -> float: return 120.0))
+	assert_eq(facade.recommended_fps_cap(120.0), 60, "saver caps")
+	var changes := [0]
+	facade.changed.connect(func() -> void: changes[0] += 1)
+	fake.read_ok = false
+	facade.refresh()
+	assert_eq(facade.get_power_source(), Facade.PowerSource.EXTERNAL, "still plugged in")
+	assert_eq(facade.is_power_saver_enabled(), true, "still saving")
+	assert_eq(facade.recommended_fps_cap(120.0), 60, "the cap holds")
+	assert_eq(changes[0], 0, "a failed read is not a change")
+	facade.free()
+
+
+func test_an_extension_without_read_power_status_still_reads() -> void:
+	var fake: RefCounted = FakeLegacy.new()
+	fake.power_source = 0
+	fake.power_saver = true
+	var backend := Backend.new(fake, func() -> float: return 60.0)
+	assert_eq(backend.get_power_source(), 0, "battery")
+	assert_eq(backend.is_power_saver_enabled(), true, "saver on")
+	# The first version cannot tell a failure from an unknown.
+	fake.power_source = -1
+	fake.power_saver = null
+	assert_eq(backend.get_power_source(), -1, "unknown")
+	assert_null(backend.is_power_saver_enabled(), "unknown")
+	fake.power_saver = 1
+	assert_null(backend.is_power_saver_enabled(), "an int is not a bool")
 
 
 func test_freeing_the_facade_releases_the_native_object() -> void:

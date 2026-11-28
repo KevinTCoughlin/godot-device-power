@@ -20,6 +20,11 @@ struct RawSystemPower {
 };
 
 struct PowerReading {
+	// Whether the platform read succeeded. False is a failed read, which the
+	// addon answers with its last good value; true with source -1 is the
+	// platform's own "unknown" (an AC line of 255 with a battery). Both have
+	// source and saver at -1, so only this field tells them apart.
+	bool valid = false;
 	// DevicePower.PowerSource: -1 unknown, 0 battery, 1 external.
 	int source = -1;
 	// -1 unknown, 0 off, 1 on. A failed read is unknown; a successful read
