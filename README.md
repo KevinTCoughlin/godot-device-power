@@ -273,6 +273,10 @@ surface already exists at the moment the callback is attached
 (`SurfaceHolder.addCallback` does not deliver `surfaceCreated` then). A vote
 of 0 withdraws the request. On Linux the vote is not made.
 
+Turning `vote_frame_rate` off at runtime sends that 0 vote, so the display goes
+back to the platform's defaults instead of keeping the last rate. Turning it
+back on votes the current rate at once.
+
 ## Android notes
 
 Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab

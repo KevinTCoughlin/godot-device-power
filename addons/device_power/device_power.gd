@@ -106,8 +106,19 @@ const _BACK_OFF_STATUS: Array[int] = [
 @export var safety_poll_interval: float = 30.0
 
 ## Whether to ask the platform for the rate the game runs at (see the class
-## description). Off leaves the display to the platform's defaults.
-@export var vote_frame_rate: bool = true
+## description). Off leaves the display to the platform's defaults: turning it
+## off at runtime withdraws a vote already made (a vote of 0), and turning it
+## back on votes again at once.
+@export var vote_frame_rate: bool = true:
+	set(value):
+		if value == vote_frame_rate:
+			return
+		vote_frame_rate = value
+		if value:
+			_voted = -1.0
+			_vote()
+		else:
+			_withdraw_vote()
 
 ## The cap on battery or with battery saver on, and the most that moderate
 ## thermal pressure allows.
@@ -609,6 +620,18 @@ func _vote() -> void:
 				% [rate, get_backend_name(), "ok" if ok else "not made"]
 			)
 		)
+
+
+## Hands the display back to the platform. Only a rate that was tried is
+## withdrawn: the Android plugin keeps a requested rate and applies it when the
+## surface appears, so a vote that reported failure can still be in force.
+func _withdraw_vote() -> void:
+	var requested := _voted > 0.0 or _tried > 0.0
+	_voted = -1.0
+	_tried = -1.0
+	if not requested or not _backend or not _backend.can_vote_frame_rate():
+		return
+	_backend.vote_frame_rate(0.0)
 
 
 func _on_backend_changed() -> void:
