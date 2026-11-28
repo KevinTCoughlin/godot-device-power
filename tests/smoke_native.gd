@@ -30,5 +30,12 @@ func _initialize() -> void:
 		push_error("an unsupported read returned a battery saver")
 		quit(1)
 		return
+	# A failed read: valid false, nothing known. The addon keeps its last
+	# good value on exactly this answer.
+	var status: Variant = native.call(&"read_power_status")
+	if status != {"valid": false, "source": -1, "saver": null}:
+		push_error("an unsupported read was not a failed one: %s" % [status])
+		quit(1)
+		return
 	print("native smoke: loaded, unsupported on this OS")
 	quit(0)
