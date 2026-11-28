@@ -19,11 +19,7 @@ extends DevicePowerBackend
 ## battery saver then stay what the last good read said, or unknown if there
 ## has been none. A good read that reports unknown, such as an AC line of
 ## 255 on a machine with a battery, is the platform's answer and replaces
-## it, and so does a value out of range. An extension built before
-## [code]read_power_status()[/code] existed is read through
-## [code]get_power_source()[/code] and [code]is_power_saver_enabled()[/code],
-## which cannot tell a failure from an unknown, so there a failure is
-## unknown.
+## it, and so does a value out of range.
 ##
 ## Refresh rate is the current one from [DisplayServer], the same limit as
 ## Linux: other modes are invisible, and this addon cannot switch them. The
@@ -59,13 +55,16 @@ func get_backend_name() -> String:
 			return "native"
 
 
-## The extension's backend when it is loaded and reports that this binary can
-## read the platform, otherwise null.
+## The extension's backend when it is loaded, has
+## [code]read_power_status()[/code], and reports that this binary can read the
+## platform, otherwise null.
 static func from_runtime() -> DevicePowerNativeBackend:
 	if not ClassDB.class_exists(&"DevicePowerNative"):
 		return null
 	var native: Variant = ClassDB.instantiate(&"DevicePowerNative")
 	if not native is Object or native == null:
+		return null
+	if not native.has_method(&"read_power_status"):
 		return null
 	var supported: Variant = native.call(&"is_supported")
 	if not (supported is bool) or not supported:
@@ -76,8 +75,6 @@ static func from_runtime() -> DevicePowerNativeBackend:
 func get_power_source() -> int:
 	if not is_instance_valid(_native):
 		return -1
-	if not _native.has_method(&"read_power_status"):
-		return _source_from(_native.call(&"get_power_source"))
 	var status: Variant = _read_status()
 	if status is Dictionary:
 		_power_source = _source_from(status.get("source"))
@@ -87,8 +84,6 @@ func get_power_source() -> int:
 func is_power_saver_enabled() -> Variant:
 	if not is_instance_valid(_native):
 		return null
-	if not _native.has_method(&"read_power_status"):
-		return _saver_from(_native.call(&"is_power_saver_enabled"))
 	var status: Variant = _read_status()
 	if status is Dictionary:
 		_power_saver = _saver_from(status.get("saver"))

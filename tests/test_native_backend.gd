@@ -9,7 +9,6 @@ extends DevicePowerTestCase
 
 const Backend := preload("res://addons/device_power/backends/native_backend.gd")
 const Fake := preload("res://tests/fake_native.gd")
-const FakeLegacy := preload("res://tests/fake_native_legacy.gd")
 const Facade := DevicePowerTestCase.FACADE_SCRIPT
 
 
@@ -125,22 +124,6 @@ func test_the_facade_keeps_a_cap_through_a_failed_poll() -> void:
 	assert_eq(facade.recommended_fps_cap(120.0), 60, "the cap holds")
 	assert_eq(changes[0], 0, "a failed read is not a change")
 	facade.free()
-
-
-func test_an_extension_without_read_power_status_still_reads() -> void:
-	var fake: RefCounted = FakeLegacy.new()
-	fake.power_source = 0
-	fake.power_saver = true
-	var backend := Backend.new(fake, func() -> float: return 60.0)
-	assert_eq(backend.get_power_source(), 0, "battery")
-	assert_eq(backend.is_power_saver_enabled(), true, "saver on")
-	# The first version cannot tell a failure from an unknown.
-	fake.power_source = -1
-	fake.power_saver = null
-	assert_eq(backend.get_power_source(), -1, "unknown")
-	assert_null(backend.is_power_saver_enabled(), "unknown")
-	fake.power_saver = 1
-	assert_null(backend.is_power_saver_enabled(), "an int is not a bool")
 
 
 func test_freeing_the_facade_releases_the_native_object() -> void:
