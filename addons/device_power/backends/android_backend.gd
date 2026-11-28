@@ -59,6 +59,7 @@ var _power_source: int = -1
 var _power_saver: Variant = null
 var _game_mode: int = 0
 var _thermal_status: int = -1
+var _refresh_rates := PackedFloat32Array()
 
 
 func _init(runtime: Object) -> void:
@@ -147,22 +148,30 @@ func get_thermal_status() -> int:
 	return _thermal_status
 
 
+## A failed read keeps the last good list, and is empty when there has been
+## none. Without an activity or its display (between a pause and a resume, or
+## while the activity is recreated) the display cannot be read, so that is a
+## failed read too; the display's modes have not changed. A read that
+## succeeds replaces the list, even with an empty one. Below API 30 the list
+## is always empty.
 func get_refresh_rates() -> PackedFloat32Array:
-	var rates := PackedFloat32Array()
+	if _sdk < 30:
+		return PackedFloat32Array()
 	var activity = _runtime.getActivity()
-	if not _ok() or not activity or _sdk < 30:
-		return rates
+	if not _ok() or not activity:
+		return _refresh_rates
 	var display = activity.getDisplay()
 	if not _ok() or not display:
-		return rates
+		return _refresh_rates
 	var current = display.getMode()
 	var modes = display.getSupportedModes()
 	if not _ok() or not current or modes == null:
-		return rates
+		return _refresh_rates
 	var width = current.getPhysicalWidth()
 	var height = current.getPhysicalHeight()
 	if not _ok() or width == null or height == null:
-		return rates
+		return _refresh_rates
+	var rates := PackedFloat32Array()
 	for mode in modes:
 		if mode == null:
 			continue
@@ -170,7 +179,7 @@ func get_refresh_rates() -> PackedFloat32Array:
 		var h = mode.getPhysicalHeight()
 		var r = mode.getRefreshRate()
 		if not _ok() or w == null or h == null or r == null:
-			return PackedFloat32Array()
+			return _refresh_rates
 		if int(w) != int(width) or int(h) != int(height):
 			continue
 		if r is float or r is int:
@@ -183,12 +192,13 @@ func get_refresh_rates() -> PackedFloat32Array:
 		if _sdk >= 31:
 			var alternatives = mode.getAlternativeRefreshRates()
 			if not _ok():
-				return PackedFloat32Array()
+				return _refresh_rates
 			if alternatives != null:
 				for alt in alternatives:
 					if alt is float or alt is int:
 						merge_refresh_rate(rates, alt)
-	return rates
+	_refresh_rates = rates
+	return _refresh_rates
 
 
 func vote_frame_rate(rate: float) -> bool:

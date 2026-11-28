@@ -66,6 +66,13 @@ Before 1.0 the public API may change in a minor release.
   battery-saver broadcast and `refresh()` published an empty list when the
   display was not ready or the read threw, which dropped the peak to 0 and
   made an uncapped game withdraw its frame-rate vote.
+- The `JavaClassWrapper` fallback also keeps its last refresh-rate list
+  when a read fails (#37). A Java call that threw or returned null partway
+  through, or a missing activity or display (as while the app is paused),
+  returned an empty list, which dropped the peak to 0 and made the facade
+  emit `changed` for a list that had not changed. A read that has never
+  succeeded is still empty, a good read replaces the list, even with an
+  empty one, and below Android 11 (API 30) the list is always empty.
 - Shutting down or freeing `DevicePower` releases the backend first. The
   Android plugin backend disconnects the engine singleton's signals in
   `release()`, and the native backend drops the GDExtension object, so a

@@ -298,7 +298,10 @@ Facts the design rests on, from testing on a Pixel 10, a Lenovo Tab
   deliver, so a refresh-rate switch reaches the cap without waiting for the
   30 s safety poll. A failed read, including on resume and when battery saver
   changes, keeps the previous list: publishing none would drop the peak to 0
-  and an uncapped game would withdraw its vote. Only what apps are told counts: a
+  and an uncapped game would withdraw its vote. The `JavaClassWrapper`
+  fallback does the same on its polls, and counts a missing activity or
+  display as a failed read; before its first good read the list is empty.
+  Only what apps are told counts: a
   Galaxy A16's `dumpsys display` lists 60 as an alternative of its single
   90 Hz mode, but `Display.Mode.getAlternativeRefreshRates()` and
   `Display.getSupportedRefreshRates()` both give `[90]`. It is treated as fixed
