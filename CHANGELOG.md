@@ -38,6 +38,12 @@ Before 1.0 the public API may change in a minor release.
 
 ### Changed
 
+- Turning `vote_frame_rate` off at runtime withdraws the vote already made
+  (a vote of 0), so the display goes back to the platform's defaults as the
+  docs said; it used to keep the last rate. A rate that was tried but reported
+  failure is withdrawn too, because the Android plugin keeps a requested rate
+  and applies it when the surface appears. Turning it back on votes the current
+  rate at once (#22).
 - A read that fails after a good one keeps the last good value (#32). The
   Android plugin, the `JavaClassWrapper` fallback and Linux used to report
   a failed re-read of the power source, battery saver, game mode or thermal

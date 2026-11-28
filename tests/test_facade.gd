@@ -149,12 +149,45 @@ func test_polls_happen_on_the_interval() -> void:
 	assert_eq(changes, 1, "polled")
 
 
-func test_vote_frame_rate_off_sends_nothing() -> void:
+func test_vote_frame_rate_off_withdraws_the_vote_and_sends_nothing_more() -> void:
+	assert_eq(mock.votes.size(), 1, "a vote was made")
 	power.vote_frame_rate = false
+	assert_eq(mock.votes[-1], 0.0, "turning it off withdraws the vote")
 	Engine.max_fps = 45
 	power._process(0.0)
 	power.refresh()
-	assert_eq(mock.votes.size(), 1, "only the vote made before it was turned off")
+	power._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(mock.votes.size(), 2, "nothing after the withdrawal")
+	power.vote_frame_rate = false
+	assert_eq(mock.votes.size(), 2, "setting it off again sends nothing")
+
+
+func test_vote_frame_rate_back_on_votes_at_once() -> void:
+	power.vote_frame_rate = false
+	Engine.max_fps = 45
+	power.vote_frame_rate = true
+	assert_eq(mock.votes[-1], 45.0, "the current cap, without waiting for a frame")
+	assert_eq(mock.votes.size(), 3, "vote, withdrawal, vote")
+
+
+func test_vote_frame_rate_off_withdraws_a_vote_that_reported_failure() -> void:
+	# The plugin keeps a rate it could not apply yet and applies it later.
+	mock.vote_ok = false
+	Engine.max_fps = 50
+	power._process(0.0)
+	assert_eq(mock.votes[-1], 50.0, "tried")
+	power.vote_frame_rate = false
+	assert_eq(mock.votes[-1], 0.0, "withdrawn anyway")
+
+
+func test_vote_frame_rate_off_before_any_vote_sends_nothing() -> void:
+	var fresh := Facade.new()
+	var quiet := DevicePowerMockBackend.new()
+	fresh.vote_frame_rate = false
+	fresh.set_backend(quiet)
+	fresh.vote_frame_rate = false
+	assert_eq(quiet.votes.size(), 0, "never voted, nothing to withdraw")
+	fresh.free()
 
 
 func test_a_polled_backends_game_mode_is_read_on_focus_only() -> void:
