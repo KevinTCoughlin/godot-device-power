@@ -210,6 +210,70 @@ func test_the_facade_keeps_a_cap_through_a_failed_poll() -> void:
 	assert_eq(changes, 0, "a failed read is not a change")
 
 
+func test_a_failed_refresh_rate_read_keeps_the_last_list() -> void:
+	# A thrown Java exception cannot be raised off Android; a Java null where
+	# the read needs a value fails the read the same way.
+	var sixty_alt := FakeAndroid.Mode.new(60.0)
+	sixty_alt.alternatives = PackedFloat32Array([120.0])
+	display.current = sixty_alt
+	display.modes = [sixty_alt, FakeAndroid.Mode.new(90.0)]
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0, 90.0]), "read")
+	var broken := FakeAndroid.Mode.new(144.0)
+	broken.rate = null
+	display.modes = [sixty_alt, broken]
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0, 90.0]), "a mode without a rate")
+	display.modes = [sixty_alt]
+	sixty_alt.width = null
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0, 90.0]), "no current size")
+	sixty_alt.width = 1080
+	display.modes = null
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0, 90.0]), "no mode list")
+	var activity: FakeAndroid.Activity = runtime.activity
+	activity.display = null
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0, 90.0]), "no display")
+	runtime.activity = null
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0, 90.0]), "paused, no activity")
+
+
+func test_a_first_failed_refresh_rate_read_is_empty() -> void:
+	display.current.height = null
+	assert_eq(backend.get_refresh_rates(), PackedFloat32Array(), "never read")
+	runtime.activity = null
+	assert_eq(_make_backend(34).get_refresh_rates(), PackedFloat32Array(), "no activity yet")
+
+
+func test_a_good_refresh_rate_read_replaces_the_kept_list() -> void:
+	display.modes = [display.current, FakeAndroid.Mode.new(120.0)]
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0]), "read")
+	display.current.height = null
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 120.0]), "kept")
+	display.current.height = 2400
+	display.modes = [display.current, FakeAndroid.Mode.new(90.0)]
+	assert_eq(backend.get_refresh_rates(), _rates([60.0, 90.0]), "a good read replaces it")
+	display.modes = [FakeAndroid.Mode.new(120.0, 720, 1600)]
+	assert_eq(backend.get_refresh_rates(), PackedFloat32Array(), "an empty reading replaces it")
+
+
+func test_refresh_rates_below_api_30_are_empty_whatever_was_kept() -> void:
+	var gated := _make_backend(29)
+	gated._refresh_rates = _rates([60.0, 120.0])
+	assert_eq(gated.get_refresh_rates(), PackedFloat32Array())
+
+
+func test_the_facade_keeps_the_refresh_rates_through_a_failed_poll() -> void:
+	display.modes = [display.current, FakeAndroid.Mode.new(120.0)]
+	power.set_backend(backend)
+	assert_eq(power.get_peak_refresh_rate(), 120.0, "peak")
+	changes = 0
+	display.current.height = null
+	power.refresh()
+	runtime.activity = null
+	power._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(power.get_refresh_rates(), _rates([60.0, 120.0]), "still the list")
+	assert_eq(power.get_peak_refresh_rate(), 120.0, "still the peak")
+	assert_eq(changes, 0, "a failed read is not a change")
+
+
 func test_the_facade_reads_the_fallback() -> void:
 	battery.plugged = 0
 	power_manager.power_save = 0
